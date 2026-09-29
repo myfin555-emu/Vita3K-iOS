@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <ime/event.h>
 #include <mem/ptr.h>
 #include <util/types.h>
 
@@ -53,15 +54,6 @@ enum SceImeType {
     SCE_IME_TYPE_EXTENDED_NUMBER = 3,
     SCE_IME_TYPE_URL = 4,
     SCE_IME_TYPE_MAIL = 5
-};
-
-enum ImeEvent {
-    SCE_IME_EVENT_OPEN = 0,
-    SCE_IME_EVENT_UPDATE_TEXT = 1,
-    SCE_IME_EVENT_UPDATE_CARET = 2,
-    SCE_IME_EVENT_CHANGE_SIZE = 3,
-    SCE_IME_EVENT_PRESS_CLOSE = 4,
-    SCE_IME_EVENT_PRESS_ENTER = 5,
 };
 
 enum SceImeEnterLabel {

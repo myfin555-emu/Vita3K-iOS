@@ -237,6 +237,7 @@ EXPORT(int, sceImeDialogInit, const Ptr<SceImeDialogParam> param) {
     {
         std::lock_guard lock2(emuenv.ime.mutex);
         ++emuenv.ime.generation;
+        emuenv.ime.native_input.reset();
         emuenv.ime.str = text;
         emuenv.ime.param.type = p->type;
         emuenv.ime.param.option = p->option;
@@ -272,6 +273,7 @@ EXPORT(int, sceImeDialogTerm) {
     // clear the shared ime state.
     {
         std::lock_guard lock2(emuenv.ime.mutex);
+        emuenv.ime.native_input.reset();
         emuenv.ime.str.clear();
         emuenv.ime.caretIndex = 0;
         emuenv.ime.edit_text = {};

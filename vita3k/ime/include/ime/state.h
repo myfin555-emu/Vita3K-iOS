@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <ime/native_input.h>
 #include <ime/types.h>
 
 #include <mutex>
@@ -45,6 +46,7 @@ struct Ime {
 
     uint64_t generation = 0; // Distinguish consecutive native keyboard sessions.
     bool state = false;
+    ime::NativeInputState native_input;
     SceImeEditText edit_text{};
     SceImeParam param{};
     std::string enter_label;
@@ -57,6 +59,7 @@ struct Ime {
         std::lock_guard lock(mutex);
         ++generation;
         state = false;
+        native_input.reset();
         edit_text = {};
         param = {};
         enter_label.clear();

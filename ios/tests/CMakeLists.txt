@@ -34,3 +34,8 @@ target_compile_features(optimization_helpers_tests PRIVATE cxx_std_17)
 target_include_directories(optimization_helpers_tests PRIVATE ../include ../../vita3k/renderer/include)
 target_link_libraries(optimization_helpers_tests PRIVATE Threads::Threads)
 add_test(NAME optimization_helpers_tests COMMAND optimization_helpers_tests)
+
+add_executable(ime_native_input_tests IMENativeInputTests.cpp)
+target_compile_features(ime_native_input_tests PRIVATE cxx_std_17)
+target_include_directories(ime_native_input_tests PRIVATE ../../vita3k/ime/include)
+add_test(NAME ime_native_input_tests COMMAND ime_native_input_tests)

@@ -37,8 +37,6 @@ NSString *native_text(const std::u16string &value) {
 @property (nonatomic) BOOL cancelable;
 @property (nonatomic) BOOL updating;
 @property (nonatomic) BOOL finished;
-@property (nonatomic) BOOL awaitingResponse;
-@property (nonatomic) int pendingEvent;
 @property (nonatomic, strong) UIView *panel;
 @property (nonatomic, strong) UITextView *editor;
 @property (nonatomic, strong) UILabel *heading;
@@ -89,7 +87,7 @@ NSString *native_text(const std::u16string &value) {
     [self publishText];
 }
 - (BOOL)textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text {
-    if (!self.multiline && [text isEqualToString:@"\n"]) {
+    if (ime::is_submit_key(utf16(text), textView.markedTextRange != nil)) {
         [self submit];
         return NO;
     }
@@ -100,51 +98,57 @@ NSString *native_text(const std::u16string &value) {
         return;
     [self.editor unmarkText];
     [self publishText];
-    auto &env = *self.environment;
-    std::lock_guard dialogLock(env.common_dialog.mutex);
-    std::lock_guard imeLock(env.ime.mutex);
-    if (![self matchesSession])
-        return;
-    if (self.dialog) {
-        auto &dialog = env.common_dialog;
-        const auto length = ime::text_length(env.ime.str, dialog.ime.max_length);
-        if (dialog.ime.result) {
-            std::memcpy(dialog.ime.result, env.ime.str.data(), length * sizeof(char16_t));
-            dialog.ime.result[length] = 0;
+    {
+        auto &env = *self.environment;
+        std::lock_guard dialogLock(env.common_dialog.mutex);
+        std::lock_guard imeLock(env.ime.mutex);
+        if (![self matchesSession])
+            return;
+        if (self.dialog) {
+            auto &dialog = env.common_dialog;
+            const auto length = ime::text_length(env.ime.str, dialog.ime.max_length);
+            if (dialog.ime.result) {
+                std::memcpy(dialog.ime.result, env.ime.str.data(), length * sizeof(char16_t));
+                dialog.ime.result[length] = 0;
+            }
+            const auto text = string_utils::utf16_to_utf8(env.ime.str.substr(0, length));
+            std::snprintf(dialog.ime.text, sizeof(dialog.ime.text), "%s", text.c_str());
+            dialog.ime.status = SCE_IME_DIALOG_BUTTON_ENTER;
+            dialog.result = SCE_COMMON_DIALOG_RESULT_OK;
+            dialog.status = SCE_COMMON_DIALOG_STATUS_FINISHED;
+        } else {
+            // The guest owns delivery, independently of UIKit frame polling.
+            env.ime.native_input.submit(SCE_IME_EVENT_PRESS_ENTER);
         }
-        const auto text = string_utils::utf16_to_utf8(env.ime.str.substr(0, length));
-        std::snprintf(dialog.ime.text, sizeof(dialog.ime.text), "%s", text.c_str());
-        dialog.ime.status = SCE_IME_DIALOG_BUTTON_ENTER;
-        dialog.result = SCE_COMMON_DIALOG_RESULT_OK;
-        dialog.status = SCE_COMMON_DIALOG_STATUS_FINISHED;
-    } else {
-        // Deliver UPDATE_TEXT before PRESS_ENTER; sceImeUpdate consumes one event.
-        self.pendingEvent = SCE_IME_EVENT_PRESS_ENTER;
     }
     self.finished = YES;
     self.editor.delegate = nil;
     [self.editor resignFirstResponder];
     self.panel.hidden = YES;
+    vita3k_ios_show_virtual_controller();
 }
 - (void)cancel {
     if (!self.cancelable || self.finished || !self.environment)
         return;
-    auto &env = *self.environment;
-    std::lock_guard dialogLock(env.common_dialog.mutex);
-    std::lock_guard imeLock(env.ime.mutex);
-    if (![self matchesSession])
-        return;
-    if (self.dialog) {
-        env.common_dialog.ime.status = SCE_IME_DIALOG_BUTTON_CLOSE;
-        env.common_dialog.result = SCE_COMMON_DIALOG_RESULT_USER_CANCELED;
-        env.common_dialog.status = SCE_COMMON_DIALOG_STATUS_FINISHED;
-    } else {
-        self.pendingEvent = SCE_IME_EVENT_PRESS_CLOSE;
+    {
+        auto &env = *self.environment;
+        std::lock_guard dialogLock(env.common_dialog.mutex);
+        std::lock_guard imeLock(env.ime.mutex);
+        if (![self matchesSession])
+            return;
+        if (self.dialog) {
+            env.common_dialog.ime.status = SCE_IME_DIALOG_BUTTON_CLOSE;
+            env.common_dialog.result = SCE_COMMON_DIALOG_RESULT_USER_CANCELED;
+            env.common_dialog.status = SCE_COMMON_DIALOG_STATUS_FINISHED;
+        } else {
+            env.ime.native_input.submit(SCE_IME_EVENT_PRESS_CLOSE);
+        }
     }
     self.finished = YES;
     self.editor.delegate = nil;
     [self.editor resignFirstResponder];
     self.panel.hidden = YES;
+    vita3k_ios_show_virtual_controller();
 }
 @end
 
@@ -163,7 +167,7 @@ void vita3k_ios_close_keyboard() {
 }
 
 void vita3k_ios_update_keyboard(EmuEnvState &env) {
-    bool active, isDialog, multiline, cancelable;
+    bool active, isDialog, multiline, cancelable, dismissed;
     uint64_t generation;
     std::u16string text;
     uint32_t caret, type, enterLabel;
@@ -181,29 +185,18 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
         type = env.ime.param.type;
         enterLabel = env.ime.param.enterLabel;
         title = isDialog ? [NSString stringWithUTF8String:env.common_dialog.ime.title] : @"Game text input";
-        if (keyboard && keyboard.generation == generation && keyboard.pendingEvent
-            && env.ime.event_id == SCE_IME_EVENT_OPEN && env.ime.state) {
-            env.ime.event_id = keyboard.pendingEvent;
-            keyboard.pendingEvent = 0;
-            keyboard.awaitingResponse = YES;
-        } else if (keyboard && keyboard.generation == generation && keyboard.awaitingResponse
-            && env.ime.event_id == SCE_IME_EVENT_OPEN) {
-            // Some games keep SceIme open after Enter (chat/search). Resume
-            // editing only after the guest has consumed the terminal event.
-            keyboard.awaitingResponse = NO;
-            keyboard.finished = NO;
-        }
+        dismissed = !isDialog && env.ime.native_input.dismissed();
     }
     if (!active) {
         vita3k_ios_close_keyboard();
         return;
     }
-    if (keyboard && keyboard.finished && !keyboard.pendingEvent && !keyboard.awaitingResponse) {
-        vita3k_ios_close_keyboard();
-        return;
-    }
     if (keyboard && (keyboard.generation != generation || keyboard.dialog != isDialog))
         vita3k_ios_close_keyboard();
+    // Keep the submitted session hidden even while the callback runs or the
+    // game keeps SceIme open. A later close/open increments generation.
+    if (dismissed)
+        return;
     if (keyboard) {
         if (keyboard.finished) {
             [keyboard.editor resignFirstResponder];
@@ -217,6 +210,7 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
         }
         if (!keyboard.finished) {
             keyboard.panel.hidden = NO;
+            [keyboard.panel.superview bringSubviewToFront:keyboard.panel];
             if (!keyboard.editor.isFirstResponder && UIApplication.sharedApplication.applicationState == UIApplicationStateActive)
                 [keyboard.editor becomeFirstResponder];
         }
@@ -241,10 +235,18 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     keyboard.multiline = multiline;
     keyboard.cancelable = cancelable;
     keyboard.panel = [UIView new];
-    keyboard.panel.backgroundColor = UIColor.secondarySystemBackgroundColor;
+    // Opaque UIKit text replaces the GPU-rendered IME card on iOS.
+    keyboard.panel.backgroundColor = UIColor.whiteColor;
+    keyboard.panel.tintColor = UIColor.systemBlueColor;
+    keyboard.panel.layer.borderColor = UIColor.lightGrayColor.CGColor;
+    keyboard.panel.layer.borderWidth = 1;
     keyboard.panel.layer.cornerRadius = 14;
     keyboard.panel.translatesAutoresizingMaskIntoConstraints = NO;
     keyboard.editor = [UITextView new];
+    keyboard.editor.backgroundColor = UIColor.whiteColor;
+    keyboard.editor.textColor = UIColor.blackColor;
+    keyboard.editor.tintColor = UIColor.systemBlueColor;
+    keyboard.editor.accessibilityIdentifier = @"vita3k.ime.text";
     keyboard.editor.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     keyboard.editor.adjustsFontForContentSizeCategory = YES;
     keyboard.editor.text = native_text(text);
@@ -264,10 +266,11 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     case SCE_IME_ENTER_LABEL_SEND: keyboard.editor.returnKeyType = UIReturnKeySend; break;
     case SCE_IME_ENTER_LABEL_SEARCH: keyboard.editor.returnKeyType = UIReturnKeySearch; break;
     case SCE_IME_ENTER_LABEL_GO: keyboard.editor.returnKeyType = UIReturnKeyGo; break;
-    default: keyboard.editor.returnKeyType = multiline ? UIReturnKeyDefault : UIReturnKeyDone; break;
+    default: keyboard.editor.returnKeyType = UIReturnKeyDone; break;
     }
     keyboard.heading = [UILabel new];
     keyboard.heading.text = title;
+    keyboard.heading.textColor = UIColor.blackColor;
     keyboard.heading.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
     keyboard.heading.adjustsFontForContentSizeCategory = YES;
     keyboard.cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -275,7 +278,8 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     keyboard.cancelButton.hidden = !cancelable;
     [keyboard.cancelButton addTarget:keyboard action:@selector(cancel) forControlEvents:UIControlEventTouchUpInside];
     UIButton *done = [UIButton buttonWithType:UIButtonTypeSystem];
-    [done setTitle:@"Done" forState:UIControlStateNormal];
+    done.accessibilityIdentifier = @"vita3k.ime.confirm";
+    [done setTitle:@"Confirm" forState:UIControlStateNormal];
     [done addTarget:keyboard action:@selector(submit) forControlEvents:UIControlEventTouchUpInside];
     UIStackView *bar = [[UIStackView alloc] initWithArrangedSubviews:@[ keyboard.cancelButton, keyboard.heading, done ]];
     bar.spacing = 12;
@@ -285,6 +289,7 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [keyboard.panel addSubview:stack];
     [window addSubview:keyboard.panel];
+    [window bringSubviewToFront:keyboard.panel];
     [NSLayoutConstraint activateConstraints:@[
         [keyboard.panel.leadingAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.leadingAnchor
                                                      constant:12],

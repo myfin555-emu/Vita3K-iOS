@@ -150,14 +150,25 @@ returned through the guest APIs, not injected as simulated controller presses.
 
 `ios/src/IOSKeyboard.mm` implements that boundary using a native `UITextView`:
 
-- Existing text, caret, keyboard type, return label and multiline mode come
-  from the game's request. The editor follows the system keyboard layout guide.
+- Existing text, caret, keyboard type, return label and editor height come
+  from the game's request. An opaque white UIKit editor with black text follows
+  the system keyboard layout guide, in portrait and landscape. On iOS the GPU
+  IME dialog and its competing controller input handler are suppressed; other
+  common dialogs continue using the renderer.
 - iOS owns composition, selection, paste, deletion and hardware keyboard input.
   Marked text stays in UIKit until committed, so Japanese/Chinese composition
   is not repeatedly replaced by the game's committed text.
 - Text and caret positions use UTF-16; limits do not split surrogate pairs.
-- Done writes `SceImeDialog` results, or queues `SCE_IME_EVENT_PRESS_ENTER`
-  after the game consumes the text update. Cancel respects dialogMode.
+- Confirm and the iOS Return/Enter key write `SceImeDialog` results, or queue
+  `SCE_IME_EVENT_PRESS_ENTER` in the shared IME state. `sceImeUpdate` delivers
+  the final text/caret update before that terminal event without waiting for a
+  UIKit frame. Cancel queues `PRESS_CLOSE` and respects dialogMode.
+- Return confirms even for multiline requests; pasting multiline text is still
+  supported. Selecting a marked-text composition candidate does not confirm.
+- Confirmation/cancellation restores the controller and keeps the keyboard
+  dismissed for the current session, including while guest callbacks run.
+  Only a new game IME session reopens it; an empty event slot or a text/caret
+  callback does not imply a request to start editing again.
 - The controls disappear while editing. Session generations reject callbacks
   belonging to a previous keyboard request; game exit removes the editor
   before guest state is destroyed.
@@ -185,10 +196,16 @@ Linux cannot compile UIKit/SwiftUI or validate device JIT. Before release, run:
    universal script. Verify the app stays gated and reports the failure.
 4. Exercise both `sceImeOpen` and `sceImeDialogInit`: initial text, paste,
    Thai/Japanese/Chinese, emoji at the limit, selection, backspace, hardware
-   keyboard, numeric keyboard, multiline Return, Done and Cancel.
-5. Test repeated Enter in a game that keeps SceIme open, game-driven text/caret
-   changes, game abort while composing, background/foreground, and game exit
-   while the keyboard is shown. Noncancelable dialogs must ignore Cancel.
+   keyboard, numeric keyboard, multiline Return, Confirm and Cancel. Confirm
+   the final typed character reaches the game before Enter. Verify the white
+   editor is readable in light/dark mode and both orientations.
+5. Test repeated Enter in a game that keeps SceIme open: send exactly one
+   confirmation and keep the keyboard closed. Open another field (for example,
+   Name then Codename in God Eater) and confirm it gets a fresh working editor.
+   Check game-driven text/caret changes during editing, game abort while composing,
+   background/foreground, and game exit while the keyboard is shown.
+   Noncancelable dialogs must ignore Cancel. The native IME replacement does
+   not address unrelated black rectangles or texture artifacts in game graphics.
 6. On a supported TrollStore device, install the IPA through TrollStore 2.0.12+,
    request JIT from Settings, return, launch and switch games. Restart the app
    and request JIT again. With TrollStore absent or its request rejected, verify

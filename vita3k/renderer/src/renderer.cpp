@@ -91,7 +91,14 @@ void State::update_overlays() {
 
     if (common_dialog) {
         auto dlg = overlay_manager->get<overlay::common_dialog_overlay>();
-        if (common_dialog->type != NO_DIALOG && common_dialog->status == SCE_COMMON_DIALOG_STATUS_RUNNING) {
+        bool render_dialog = common_dialog->type != NO_DIALOG
+            && common_dialog->status == SCE_COMMON_DIALOG_STATUS_RUNNING;
+#ifdef VITA3K_PLATFORM_IOS
+        // UIKit owns the iOS IME card and its confirm/cancel controls. Rendering
+        // a second GPU card also attaches a competing dialog input handler.
+        render_dialog = render_dialog && common_dialog->type != IME_DIALOG;
+#endif
+        if (render_dialog) {
             bool just_created = false;
             if (!dlg) {
                 dlg = overlay_manager->create<overlay::common_dialog_overlay>();

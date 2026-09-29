@@ -46,6 +46,7 @@ EXPORT(SceInt32, sceImeClose) {
     TRACY_FUNC(sceImeClose);
     std::unique_lock lock(emuenv.ime.mutex);
     ++emuenv.ime.generation;
+    emuenv.ime.native_input.reset();
     emuenv.ime.state = false;
 
     if (emuenv.ime.param.inputTextBuffer.address())
@@ -70,6 +71,7 @@ EXPORT(SceInt32, sceImeOpen, SceImeParam *param) {
     if (emuenv.ime.state)
         return RET_ERROR(SCE_IME_ERROR_ALREADY_OPENED);
     ++emuenv.ime.generation;
+    emuenv.ime.native_input.reset();
     emuenv.ime.caps_level = 0;
     emuenv.ime.caretIndex = 0;
     emuenv.ime.edit_text = {};
@@ -177,20 +179,20 @@ EXPORT(SceInt32, sceImeUpdate) {
     if (!emuenv.ime.state)
         return RET_ERROR(SCE_IME_ERROR_NOT_OPENED);
 
-    if (emuenv.ime.event_id == SCE_IME_EVENT_OPEN)
+    const auto event_id = emuenv.ime.native_input.take_event(emuenv.ime.event_id);
+    if (event_id == SCE_IME_EVENT_OPEN)
         return 0;
 
     Ptr<SceImeEvent> event = Ptr<SceImeEvent>(alloc(emuenv.mem, sizeof(SceImeEvent), "ime_event"));
     SceImeEvent *e = event.get(emuenv.mem);
     *e = {};
-    e->id = emuenv.ime.event_id;
+    e->id = event_id;
     memcpy(emuenv.ime.edit_text.str.get(emuenv.mem), emuenv.ime.str.c_str(), (emuenv.ime.str.length() + 1) * sizeof(SceWChar16));
     if (e->id == SCE_IME_EVENT_UPDATE_CARET)
         e->param.caretIndex = emuenv.ime.caretIndex;
     else
         e->param.text = emuenv.ime.edit_text;
     const auto arg = emuenv.ime.param.arg;
-    emuenv.ime.event_id = SCE_IME_EVENT_OPEN;
     lock.unlock(); // Guest callbacks can call sceImeSetText/Close again.
     CALL_EXPORT(SceImeEventHandler, arg, e);
     free(emuenv.mem, event.address());
