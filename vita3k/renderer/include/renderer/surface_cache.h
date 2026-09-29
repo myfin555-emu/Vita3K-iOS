@@ -1,9 +1,9 @@
 #pragma once
 
-#include <cstdint>
-#include <vector>
-#include <unordered_set>
 #include <cstddef>
+#include <cstdint>
+#include <unordered_set>
+#include <vector>
 
 namespace renderer {
 
@@ -37,7 +37,7 @@ public:
      * @brief Batch mark multiple surfaces as changed
      * @param addresses Vector of GPU surface addresses
      */
-    void mark_dirty_batch(const std::vector<uint64_t>& addresses) {
+    void mark_dirty_batch(const std::vector<uint64_t> &addresses) {
         for (uint64_t addr : addresses) {
             dirty_surfaces.insert(addr);
         }
