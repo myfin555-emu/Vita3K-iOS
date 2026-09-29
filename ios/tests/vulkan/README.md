@@ -23,8 +23,21 @@ ctest --test-dir build-vulkan-tests --output-on-failure
 The build compiles each shared Vulkan helper as the first include, followed by
 the production Vulkan/VMA wrapper. Aggregate and designated-initializer checks
 catch Vulkan-Hpp configuration differences without injecting test-only macros.
-The suite uses the pinned VMA-Hpp Vulkan headers. CI also builds and runs it
-against the headers from the pinned iOS MoltenVK package before building the IPA.
+The suite uses the pinned VMA-Hpp Vulkan headers. To check the iOS MoltenVK
+headers on the host as well:
+
+```sh
+cmake -P .ci/install-moltenvk.cmake
+cmake -S ios/tests/vulkan -B build-moltenvk-header-tests -DCMAKE_BUILD_TYPE=Debug \
+  -DVulkan_INCLUDE_DIR="$PWD/build-deps/moltenvk/MoltenVK/MoltenVK/include"
+cmake --build build-moltenvk-header-tests -j 2
+ctest --test-dir build-moltenvk-header-tests --output-on-failure
+```
+
+Run both configurations before the IPA build. Enabling this CI gate requires
+installing the companion `vulkan-checks.yml` workflow and adding its reusable
+job to `unsigned-ipa.needs` in `ios-upstream.yml`. Workflow installation requires
+GitHub workflow write permission; the source/test fix can be pushed separately.
 
 The C++ test uses the production dependency and descriptor-cache helpers. It
 creates each render-pass mode on the Vulkan device with validation enabled,
