@@ -19,6 +19,7 @@
 
 #include <gxm/functions.h>
 #include <renderer/vulkan/gxm_to_vulkan.h>
+#include <renderer/vulkan/render_pass_dependencies.h>
 #include <renderer/vulkan/state.h>
 #include <renderer/vulkan/types.h>
 #include <vkutil/vkutil.h>
@@ -628,12 +629,17 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
         const uint64_t scene_timestamp = reinterpret_cast<VKContext *>(state.context)->scene_timestamp;
 
         std::vector<CastedTexture> &casted_vec = info.casted_textures;
+        const bool same_components = bytes_per_pixel_requested == bytes_per_pixel_in_store
+            && vk::componentCount(info.texture.format) == vk::componentCount(vk_format);
+        const vk::ComponentMapping resulting_swizzle = same_components
+            ? vkutil::color_to_texture_swizzle(info.swizzle, swizzle) : swizzle;
 
         CastedTexture *casted = nullptr;
 
         // Look in cast cache and grab one. The cache really does not store immediate grab on now, but rather to reduce the synchronization in the pipeline (use different texture)
         for (size_t i = 0; i < casted_vec.size();) {
-            if ((casted_vec[i].cropped_height == height) && (casted_vec[i].cropped_width == width) && (casted_vec[i].cropped_y == start_sourced_line) && (casted_vec[i].cropped_x == start_x) && (casted_vec[i].format == base_format)) {
+            if ((casted_vec[i].cropped_height == height) && (casted_vec[i].cropped_width == width) && (casted_vec[i].cropped_y == start_sourced_line) && (casted_vec[i].cropped_x == start_x) && (casted_vec[i].format == base_format)
+                && casted_vec[i].texture.format == vk_format && casted_vec[i].components == resulting_swizzle) {
                 casted = &casted_vec[i];
 
                 if (casted->scene_timestamp == scene_timestamp) {
@@ -664,22 +670,12 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
                 .cropped_y = start_sourced_line,
                 .cropped_width = width,
                 .cropped_height = height,
-                .format = base_format
+                .format = base_format,
+                .components = resulting_swizzle
             };
             casted->texture.width = width;
             casted->texture.height = height;
             casted->texture.format = vk_format;
-
-            // find the swizzle we need to apply
-            const std::uint8_t components_in_store = vk::componentCount(info.texture.format);
-            const std::uint8_t components_requested = vk::componentCount(vk_format);
-            vk::ComponentMapping resulting_swizzle;
-            // Only take into consideration the current swizzle when it makes sense
-            // (Not perfect but better than doing this all the time)
-            if (bytes_per_pixel_requested == bytes_per_pixel_in_store && components_in_store == components_requested)
-                resulting_swizzle = vkutil::color_to_texture_swizzle(info.swizzle, swizzle);
-            else
-                resulting_swizzle = swizzle;
 
             casted->texture.init_image(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, resulting_swizzle);
             casted->texture.transition_to(cmd_buffer, vkutil::ImageLayout::TransferDst);
@@ -689,10 +685,21 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
 
         casted->scene_timestamp = scene_timestamp;
 
+        // Include storage-image writes from framebuffer fetch. The prerender
+        // buffer runs after previous scenes, but still needs a memory dependency.
+        cmd_buffer.pipelineBarrier(surface_write_stages, vk::PipelineStageFlagBits::eTransfer,
+            {}, surface_transfer_barrier(), {}, {});
+
         if (partial_surface) {
             const vk::ClearColorValue clear_color{ std::array<float, 4>({ 0.0f, 0.0f, 0.0f, 0.0f }) };
             cmd_buffer.clearColorImage(casted->texture.image, vk::ImageLayout::eTransferDstOptimal,
                 clear_color, vkutil::color_subresource_range);
+            const vk::MemoryBarrier clear_barrier{
+                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+                .dstAccessMask = vk::AccessFlagBits::eTransferWrite
+            };
+            cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,
+                {}, clear_barrier, {}, {});
         }
 
         if (bytes_per_pixel_requested == bytes_per_pixel_in_store) {
@@ -737,6 +744,13 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
             };
             cmd_buffer.copyImageToBuffer(info.texture.image, vk::ImageLayout::eGeneral, casted->transition_buffer.buffer, copy_image_buffer);
 
+            const vk::MemoryBarrier copy_barrier{
+                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+                .dstAccessMask = vk::AccessFlagBits::eTransferRead
+            };
+            cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,
+                {}, copy_barrier, {}, {});
+
             // then the buffer to the image
             const uint32_t dst_pixel_stride = (stride_bytes / bytes_per_pixel_requested) * state.res_multiplier;
             copy_image_buffer
@@ -746,7 +760,7 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
                 .setImageExtent({ width, height, 1 });
             cmd_buffer.copyBufferToImage(casted->transition_buffer.buffer, casted->texture.image, vk::ImageLayout::eTransferDstOptimal, copy_image_buffer);
         }
-        casted->texture.transition_to(cmd_buffer, vkutil::ImageLayout::ColorAttachmentReadWrite);
+        casted->texture.transition_to(cmd_buffer, vkutil::ImageLayout::SampledImage);
 
         return TextureLookupResult{
             casted->texture.view,
@@ -1315,13 +1329,8 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
         // drivers tolerate the missing barrier). Make every prior write to
         // this surface (color-attachment rendering AND transfer/clear/blit)
         // available to the transfer read.
-        const vk::MemoryBarrier readback_barrier{
-            .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eTransferWrite,
-            .dstAccessMask = vk::AccessFlagBits::eTransferRead
-        };
         cmd_buffer.pipelineBarrier(
-            vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eTransfer, {}, readback_barrier, {}, {});
+            surface_write_stages, vk::PipelineStageFlagBits::eTransfer, {}, surface_transfer_barrier(), {}, {});
     }
 
     if (state.res_multiplier != 1.0f) {
@@ -1371,7 +1380,11 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
         vkutil::Buffer &copy_buffer = *last_written_surface->copy_buffer;
 
         if (!copy_buffer.buffer) {
-            copy_buffer.size = last_written_surface->stride_bytes * last_written_surface->original_height;
+            // RGB24 is stored as RGBA8 on the GPU. Allocate for the
+            // host row pitch, not the smaller guest representation.
+            const size_t host_stride = format_need_additional_memory(last_written_surface->format)
+                ? (last_written_surface->stride_bytes / 3) * 4 : last_written_surface->stride_bytes;
+            copy_buffer.size = host_stride * last_written_surface->original_height;
             copy_buffer.init_buffer(vk::BufferUsageFlagBits::eTransferDst, vkutil::vma_mapped_alloc);
         }
 
@@ -1463,7 +1476,6 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
         return;
 
     const uint32_t pixel_stride = (surface->stride_bytes * 8) / gxm::bits_per_pixel(surface->format);
-    const uint32_t nb_pixels = pixel_stride * surface->original_height;
     uint8_t *pixels = surface->data.cast<uint8_t>().get(mem);
 
     if (format_need_additional_memory(surface->format)) {
@@ -1486,10 +1498,15 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
         // Copy it over, then apply the swizzle fix in place if needed.
         if (!surface->copy_buffer || !surface->copy_buffer->mapped_data)
             return;
-        const size_t byte_count = static_cast<size_t>(surface->stride_bytes) * surface->original_height;
-        memcpy(pixels, surface->copy_buffer->mapped_data, byte_count);
+        // Image-to-buffer copies leave row padding undefined. Preserve guest
+        // padding instead of feeding it back into CPU data and texture hashes.
+        const size_t row_bytes = static_cast<size_t>(surface->original_width) * gxm::bits_per_pixel(surface->format) / 8;
+        const auto *source = static_cast<const uint8_t *>(surface->copy_buffer->mapped_data);
+        for (uint32_t row = 0; row < surface->original_height; ++row)
+            memcpy(pixels + row * surface->stride_bytes, source + row * surface->stride_bytes, row_bytes);
 
 #ifdef VITA3K_PLATFORM_IOS
+        const size_t byte_count = static_cast<size_t>(surface->stride_bytes) * surface->original_height;
         // Per-surface diagnostic, rate-limited to ~1 line per surface per 3s so
         // it shows STEADY-STATE content (the earlier one-shot version only saw
         // each surface's first, often-empty sync). Samples the whole surface,
@@ -1537,16 +1554,20 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
             return;
     }
 
-    switch (vk::componentBits(surface->texture.format, 0)) {
-    case 8:
-        swizzle_text_T<uint8_t>(pixels, nb_pixels, surface);
-        break;
-    case 16:
-        swizzle_text_T<uint16_t>(reinterpret_cast<uint16_t *>(pixels), nb_pixels, surface);
-        break;
-    case 32:
-        swizzle_text_T<uint32_t>(reinterpret_cast<uint32_t *>(pixels), nb_pixels, surface);
-        break;
+    // Swizzle only rendered texels; padding belongs to guest memory too.
+    for (uint32_t row = 0; row < surface->original_height; ++row) {
+        uint8_t *row_pixels = pixels + row * surface->stride_bytes;
+        switch (vk::componentBits(surface->texture.format, 0)) {
+        case 8:
+            swizzle_text_T<uint8_t>(row_pixels, surface->original_width, surface);
+            break;
+        case 16:
+            swizzle_text_T<uint16_t>(reinterpret_cast<uint16_t *>(row_pixels), surface->original_width, surface);
+            break;
+        case 32:
+            swizzle_text_T<uint32_t>(reinterpret_cast<uint32_t *>(row_pixels), surface->original_width, surface);
+            break;
+        }
     }
 }
 

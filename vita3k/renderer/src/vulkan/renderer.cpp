@@ -1086,6 +1086,7 @@ void VKState::cleanup() {
         for (auto &descriptor : frames[i].frag_descriptors)
             release_descriptor_sets(descriptor);
         release_descriptor_sets(frames[i].color_descriptor);
+        frames[i].texture_descriptors.clear();
     }
 
     pipeline_cache.cleanup();

@@ -17,6 +17,7 @@
 
 #include <renderer/vulkan/pipeline_cache.h>
 #include <renderer/vulkan/pipeline_cache_data.h>
+#include <renderer/vulkan/render_pass_dependencies.h>
 
 #include <renderer/vulkan/gxm_to_vulkan.h>
 #include <renderer/vulkan/state.h>
@@ -598,62 +599,7 @@ vk::RenderPass PipelineCache::retrieve_render_pass(vk::Format format, bool force
         .finalLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal
     };
 
-    std::array<vk::SubpassDependency, 4> dependencies;
-
-    // external dependency
-    // we want the previous render pass to be done when we reach the fragment stage / stencil*depth testing
-    dependencies[0] = {
-        .srcSubpass = VK_SUBPASS_EXTERNAL,
-        .dstSubpass = 0,
-        .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eLateFragmentTests,
-        .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
-        .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
-        .dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentRead
-    };
-
-    if (state.features.support_shader_interlock && no_color) {
-        // we must wait for the previous shaders to be done
-        dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
-        dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
-    }
-
-    // if an attachment is sampled from, we want it to be done before the next render pass fragment shader
-    dependencies[1] = {
-        .srcSubpass = VK_SUBPASS_EXTERNAL,
-        .dstSubpass = 0,
-        .srcStageMask = vk::PipelineStageFlagBits::eFragmentShader,
-        .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eLateFragmentTests,
-        .srcAccessMask = vk::AccessFlagBits::eShaderRead,
-        .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite
-    };
-
-    if (state.features.support_shader_interlock && !no_color) {
-        // we must wait for the shader interlock shader to be done
-        dependencies[1].srcAccessMask |= vk::AccessFlagBits::eShaderWrite;
-    }
-
-    // self-dependency
-    // this allows us to use a pipeline barrier in the render pass for programmable blending
-    dependencies[2] = {
-        .srcSubpass = 0,
-        .dstSubpass = 0,
-        .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        .dstStageMask = vk::PipelineStageFlagBits::eFragmentShader,
-        .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
-        .dstAccessMask = vk::AccessFlagBits::eInputAttachmentRead,
-        .dependencyFlags = vk::DependencyFlagBits::eByRegion
-    };
-
-    // mid-scene flush
-    // unity games use it to write to a buffer in a vertex shader then use it as the vertex input in the next draw
-    dependencies[3] = {
-        .srcSubpass = 0,
-        .dstSubpass = 0,
-        .srcStageMask = vk::PipelineStageFlagBits::eVertexShader,
-        .dstStageMask = vk::PipelineStageFlagBits::eVertexInput,
-        .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
-        .dstAccessMask = vk::AccessFlagBits::eVertexAttributeRead
-    };
+    const auto dependencies = render_pass_dependencies(state.features.support_shader_interlock, no_color);
 
     vk::RenderPassCreateInfo pass_info{};
     vk::AttachmentDescription attachments[] = { color_attachment, ds_attachment };

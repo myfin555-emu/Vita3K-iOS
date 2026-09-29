@@ -57,7 +57,7 @@ final class PerformanceStateBridge: NSObject {
     }
 }
 
-/// The readout itself: a single glass capsule, draggable to reposition.
+/// The readout itself: a lightweight capsule, draggable to reposition.
 @MainActor
 struct PerformanceOverlayView: View {
     /// True while the layout editor is open: the overlay then shows a sample
@@ -94,11 +94,17 @@ struct PerformanceOverlayView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            // Non-interactive glass: this sits over a 60fps drawable, and an
-            // interactive variant would run a live refraction pass every frame
-            // for a readout nobody touches. Follows the in-game material
-            // setting, so turning glass off leaves no backdrop read at all.
-            .overlaySurface(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            // A performance readout should not add a live backdrop/blur pass
+            // over every game frame, including on older iOS material fallbacks.
+            .environment(\.colorScheme, .dark)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.black.opacity(0.65))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+                    }
+            }
             .overlay {
                 if editingProxy {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)

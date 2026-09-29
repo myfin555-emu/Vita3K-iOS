@@ -628,6 +628,7 @@ void new_frame(VKContext &context) {
         frame.frag_descriptors[i].descriptors_idx = 0;
     }
     frame.color_descriptor.descriptors_idx = 0;
+    frame.texture_descriptors.clear();
 
     // deferred destruction of the objects
     frame.destroy_queue.destroy_objects();

@@ -20,6 +20,7 @@
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
 #include <renderer/vulkan/frame_lifetime.h>
+#include <renderer/vulkan/texture_descriptor_cache.h>
 #include <shader/uniform_block.h>
 #include <vkutil/objects.h>
 
@@ -106,6 +107,7 @@ struct FrameObject {
 
     // descriptor for the color surface
     FrameDescriptor color_descriptor;
+    TextureDescriptorCache texture_descriptors;
 
     // destroy gpu objects MAX_FRAMES_RENDERING frames later to make sure they are no longer being used
     vkutil::DestroyQueue destroy_queue;

@@ -72,6 +72,7 @@ struct CastedTexture {
     uint32_t cropped_width = 0;
     uint32_t cropped_height = 0;
     SceGxmColorBaseFormat format;
+    vk::ComponentMapping components{};
 };
 
 struct SampledSurfaceView {

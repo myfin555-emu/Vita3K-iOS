@@ -165,6 +165,38 @@ static vk::DescriptorSet retrieve_descriptor(VKContext &context, bool is_vertex,
     return frame_descriptor.sets[frame_descriptor.descriptors_idx++];
 }
 
+static vk::DescriptorSet retrieve_texture_descriptor(VKContext &context, bool vertex, uint16_t count) {
+    if (count == 0)
+        return context.empty_set;
+
+    TextureDescriptorKey key{};
+    key.count = count;
+    key.vertex = vertex;
+    const vk::DescriptorImageInfo fallback{
+        .sampler = context.state.default_image.sampler,
+        .imageView = context.state.default_image.view,
+        .imageLayout = vk::ImageLayout::eGeneral
+    };
+    const auto &textures = vertex ? context.vertex_textures : context.fragment_textures;
+    for (uint16_t i = 0; i < count; ++i)
+        key.images[i] = textures[i].sampler ? textures[i] : fallback;
+
+    return context.state.frame().texture_descriptors.get_or_create(key, [&]() {
+        const auto set = retrieve_descriptor(context, vertex, count);
+        std::array<vk::WriteDescriptorSet, 16> writes{};
+        for (uint16_t i = 0; i < count; ++i) {
+            writes[i] = vk::WriteDescriptorSet{
+                .dstSet = set,
+                .dstBinding = i,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            };
+            writes[i].setImageInfo(key.images[i]);
+        }
+        context.state.device.updateDescriptorSets(count, writes.data(), 0, nullptr);
+        return set;
+    });
+}
+
 static void draw_bind_descriptors(VKContext &context, MemState &mem) {
     VKState &state = context.state;
 
@@ -186,51 +218,14 @@ static void draw_bind_descriptors(VKContext &context, MemState &mem) {
 
     {
         if (need_vert_descr) {
-            context.last_vert_texture_descriptor = retrieve_descriptor(context, true, vertex_textures_count);
+            context.last_vert_texture_descriptor = retrieve_texture_descriptor(context, true, vertex_textures_count);
         }
         descriptors[2] = context.last_vert_texture_descriptor;
 
         if (need_frag_descr) {
-            context.last_frag_texture_descriptor = retrieve_descriptor(context, false, fragment_texture_count);
+            context.last_frag_texture_descriptor = retrieve_texture_descriptor(context, false, fragment_texture_count);
         }
         descriptors[3] = context.last_frag_texture_descriptor;
-    }
-
-    // bind textures
-    std::array<vk::WriteDescriptorSet, 16> write_descrs;
-    // some default sampler in case a slot has never been set and we read a slot with higher idx
-    vk::DescriptorImageInfo default_image_info{
-        .sampler = context.state.default_image.sampler,
-        .imageView = context.state.default_image.view,
-        .imageLayout = vk::ImageLayout::eGeneral
-    };
-
-    // vertex
-    if (need_vert_descr) {
-        for (uint32_t i = 0; i < vertex_textures_count; i++) {
-            write_descrs[i] = vk::WriteDescriptorSet{
-                .dstSet = descriptors[2],
-                .dstBinding = i,
-                .dstArrayElement = 0,
-                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-            };
-            write_descrs[i].setImageInfo(context.vertex_textures[i].sampler ? context.vertex_textures[i] : default_image_info);
-        }
-        state.device.updateDescriptorSets(vertex_textures_count, write_descrs.data(), 0, nullptr);
-    }
-
-    // fragment
-    if (need_frag_descr) {
-        for (uint32_t i = 0; i < fragment_texture_count; i++) {
-            write_descrs[i] = vk::WriteDescriptorSet{
-                .dstSet = descriptors[3],
-                .dstBinding = i,
-                .dstArrayElement = 0,
-                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-            };
-            write_descrs[i].setImageInfo(context.fragment_textures[i].sampler ? context.fragment_textures[i] : default_image_info);
-        }
-        state.device.updateDescriptorSets(fragment_texture_count, write_descrs.data(), 0, nullptr);
     }
 
     const uint32_t dynamic_offset_count = state.features.enable_memory_mapping ? 2U : 4U;

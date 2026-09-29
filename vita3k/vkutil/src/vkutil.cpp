@@ -119,7 +119,7 @@ static constexpr ImageLayoutTransition layout_transitions[] = {
     // SampledImage
     {
         vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader,
+        vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader,
         vk::AccessFlagBits::eShaderRead },
     // StorageImage
     {

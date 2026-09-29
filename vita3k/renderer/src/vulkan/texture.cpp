@@ -166,7 +166,7 @@ void sync_texture(VKContext &context, MemState &mem, std::size_t index, SceGxmTe
     vk::DescriptorImageInfo &image_info = is_vertex
         ? context.vertex_textures[index - SCE_GXM_MAX_TEXTURE_UNITS]
         : context.fragment_textures[index];
-    if (image_info.sampler != sampler || image_info.imageView != lookup_result->view) {
+    if (image_info.sampler != sampler || image_info.imageView != lookup_result->view || image_info.imageLayout != layout) {
         image_info = vk::DescriptorImageInfo{
             .sampler = sampler,
             .imageView = lookup_result->view,
@@ -591,8 +591,8 @@ void VKTextureCache::upload_done() {
 void VKTextureCache::configure_sampler(size_t index, const SceGxmTexture &texture, bool no_linear) {
     vk::Sampler &sampler = samplers[index];
     if (sampler) {
-        // the previous one has not been used for a while, we can destroy it
-        state.device.destroy(sampler);
+        // Submitted draws and cached descriptor sets may still reference it.
+        state.frame().destroy_queue.add(sampler);
     }
 
     // linear strided textures use the mag filter as the min filter too

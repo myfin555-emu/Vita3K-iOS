@@ -470,3 +470,33 @@ The latest supplied log predates the logging/staging/single-flight changes in
 4f8de4e. Compare a new build using the existing `iOS renderer`, `iOS gameplay`
 and `NGS update timing` summaries. Passing host shader tests does not establish
 a stable 30 FPS, eliminate thermal throttling, or confirm every effect renders.
+
+### Multipass color and 2D UI follow-up (Gravity Rush / God Eater)
+
+The supplied d8c12f1 capture is Gravity Rush (PCSA00011) on Apple A11 with High
+Accuracy and staging-buffer surface sync. Gameplay reports 12–18 FPS; most
+300-frame renderer samples have zero skipped draws. This capture does not
+establish God Eater's bottleneck or show that asynchronous compilation causes
+the persistent dark/RGB gameplay images.
+
+The renderer now preserves the attachment-to-storage-image dependency instead
+of overwriting it, makes rendered/copied surfaces visible to later sampling,
+and synchronizes framebuffer-fetch writes before staging readback and cropped
+copies. Cropped surface cache entries include the requested gamma format and
+component mapping, so linear/sRGB and swizzled views cannot reuse the wrong
+interpretation. Readback preserves guest row padding and allocates RGB24 staging
+at the GPU's RGBA row size.
+
+Repeated texture binding combinations reuse immutable descriptor sets within a
+frame slot. Reset happens after that slot's fences; sampler destruction is also
+deferred. This targets repeated atlas/sprite bindings in 2D menus while retaining
+per-bind texture hashing and uploads. The FPS HUD uses a flat translucent
+background to avoid a live backdrop blur over game frames.
+
+These are shared renderer changes with no title-ID exceptions. Host regressions
+are documented in `tests/vulkan/README.md`; they verify dependency masks,
+Vulkan render-pass creation, cache keys, binding reuse and readback boundaries.
+They do not certify either game's graphics, playable FPS, or compatibility with
+untested games. Device verification remains required: replay Gravity Rush's
+opening and gameplay, then compare each God Eater title's menu open/closed with
+the same resolution, High Accuracy and overlay settings, and retain fresh logs.
