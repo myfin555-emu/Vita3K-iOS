@@ -111,7 +111,7 @@ static void debug_log_message(std::string_view msg) {
     }
 
     if (log_error)
-        LOG_ERROR("Validation layer: {}", msg);
+        LOG_ERROR("Vulkan driver/validation: {}", msg);
 }
 
 static vk::DebugUtilsMessengerEXT debug_messenger;
@@ -465,11 +465,18 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
             if (config.validation_layer) {
                 LOG_INFO("Enabling vulkan validation layers (has a performance impact but allows better error messages)");
                 instance_layers.push_back(validation_layer.c_str());
-                instance_extensions.push_back(found_debug_extension.data());
             } else {
                 LOG_INFO("Disabling Vulkan validation layers (may improve performance but provides limited error messages)");
             }
         }
+
+        bool enable_driver_messages = has_validation_layer && config.validation_layer;
+#ifdef VITA3K_PLATFORM_IOS
+        // MoltenVK reports Metal compiler errors without a validation layer.
+        enable_driver_messages = true;
+#endif
+        if (enable_driver_messages && !found_debug_extension.empty())
+            instance_extensions.push_back(found_debug_extension.data());
 
 #ifdef __APPLE__
 #if !defined(VITA3K_PLATFORM_IOS)
@@ -516,7 +523,7 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
         instance = vk::createInstance(instance_info);
         VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
 
-        if (has_validation_layer && !found_debug_extension.empty() && config.validation_layer) {
+        if (enable_driver_messages && !found_debug_extension.empty()) {
             // we support two debugging extensions
             if (found_debug_extension == VK_EXT_DEBUG_UTILS_EXTENSION_NAME) {
                 vk::DebugUtilsMessengerCreateInfoEXT debug_info{

@@ -48,6 +48,7 @@ constexpr size_t record_pipeline_len = offsetof(GxmRecordState, vertex_streams);
 struct CompileRequest {
     // iterator to the pipeline location
     vk::Pipeline *pipeline;
+    uint64_t key;
 
     // this is everything we need to compile the shader on another thread (as the original data will change)
     SceGxmPrimitiveType type;
@@ -403,6 +404,7 @@ void PipelineCache::cleanup() {
     for (auto &[hash, pipeline] : pipelines)
         state.device.destroy(pipeline);
     pipelines.clear();
+    failed_pipelines.clear();
 
     {
         std::lock_guard<std::mutex> guard(shaders_mutex);
@@ -814,7 +816,12 @@ void PipelineCache::compiler_thread(MemState &mem) {
             break;
 
         vk::Pipeline pipeline = compile_pipeline(request->type, request->render_pass, *request->vertex_program_gxm, *request->fragment_program_gxm, *request->get_record(), request->hints, mem);
-        *request->pipeline = pipeline;
+        {
+            std::lock_guard lock(failed_pipelines_mutex);
+            if (!pipeline)
+                failed_pipelines.insert(request->key);
+            *request->pipeline = pipeline;
+        }
 
         request->vertex_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
         request->fragment_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
@@ -941,13 +948,34 @@ vk::Pipeline PipelineCache::compile_pipeline(SceGxmPrimitiveType type, vk::Rende
         .subpass = 0
     };
 
-    const auto result = state.device.createGraphicsPipeline(pipeline_cache, pipeline_info);
-    if (result.result != vk::Result::eSuccess) {
-        LOG_CRITICAL("Failed to create pipeline.");
+    // Use the non-throwing overload: the enhanced singular overload throws
+    // before its result can be checked, terminating async compiler threads.
+    vk::Pipeline pipeline;
+    auto result = state.device.createGraphicsPipelines(pipeline_cache, 1, &pipeline_info, nullptr, &pipeline);
+    if (result == vk::Result::eErrorInitializationFailed) {
+        LOG_WARN("Pipeline creation failed; retrying without driver cache. vertex={} fragment={}",
+            hex_string(vertex_program.hash), hex_string(fragment_program.hash));
+        if (pipeline)
+            state.device.destroyPipeline(pipeline);
+        pipeline = nullptr;
+        result = state.device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &pipeline);
+    }
+    if (result != vk::Result::eSuccess) {
+        if (pipeline)
+            state.device.destroyPipeline(pipeline);
+        LOG_ERROR("Pipeline rejected: result={} vertex={} fragment={} primitive={} stages={} attributes={} bindings={}. Draws using this pipeline will be skipped for this session.",
+            vk::to_string(result), hex_string(vertex_program.hash), hex_string(fragment_program.hash),
+            static_cast<uint32_t>(type), shader_stage_count, vertex_input.vertexAttributeDescriptionCount,
+            vertex_input.vertexBindingDescriptionCount);
+        for (uint32_t i = 0; i < vertex_input.vertexAttributeDescriptionCount; ++i) {
+            const auto &attribute = vertex_input.pVertexAttributeDescriptions[i];
+            LOG_ERROR("Rejected pipeline attribute: location={} binding={} format={} offset={}",
+                attribute.location, attribute.binding, vk::to_string(attribute.format), attribute.offset);
+        }
         return nullptr;
     }
 
-    return result.value;
+    return pipeline;
 }
 
 vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiveType &type, bool consider_for_async, MemState &mem) {
@@ -973,6 +1001,10 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
     // if the pipeline is in the pipeline cache, we can expect its creation time to be almost instantaneous
     bool already_in_cache = false;
 
+    // Also synchronizes the worker's result publication before reading it.
+    std::unique_lock failure_lock(failed_pipelines_mutex);
+    if (failed_pipelines.contains(key))
+        return nullptr;
     auto it = pipelines.find(key);
     if (it != pipelines.end()) {
         if (it->second != nullptr) {
@@ -987,6 +1019,8 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
         // the pipeline hash was not in the cache;
         it = pipelines.insert({ key, pipeline_compiling }).first;
     }
+
+    failure_lock.unlock();
 
     // get the correct renderpass here
     const SceGxmProgram *gxm_fragment_shader = fragment_program_gxm.program.get(mem);
@@ -1004,6 +1038,7 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
         CompileRequest *request = new CompileRequest;
         *request = {
             .pipeline = &it->second,
+            .key = key,
             .type = type,
             .render_pass = render_pass,
             .vertex_program_gxm = &vertex_program_gxm,
@@ -1030,7 +1065,12 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
         if (!already_in_cache)
             state.shaders_count_compiled++;
 
-        it->second = result;
+        {
+            std::lock_guard lock(failed_pipelines_mutex);
+            if (!result)
+                failed_pipelines.insert(key);
+            it->second = result;
+        }
 
         return result;
     }

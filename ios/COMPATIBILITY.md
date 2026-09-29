@@ -320,3 +320,21 @@ called sceImeClose. It also ends in createGraphicsPipeline ErrorInitializationFa
 that separate pipeline failure is not diagnosed by the PVRTC fix. Device checks
 still need to cover character textures, later scenes and rotation. The compact
 input card needs portrait/landscape verification with the system keyboard visible.
+
+### Pipeline rejection before the lobby
+
+The b45c209 device log confirms corrected textures and input, but ends in
+`createGraphicsPipeline: ErrorInitializationFailed`. The previous Vulkan-Hpp
+call threw before the error check and escaped the compiler thread, aborting
+the app. Pipeline creation now uses the nonthrowing overload, retries an
+initialization failure once without the driver cache, and records shader hashes
+and vertex input layout if rejected again. Failed keys are suppressed for the
+current session so every frame does not retry compilation; a new session retries.
+Driver error callbacks are enabled on iOS even without a validation layer to
+capture MoltenVK/Metal's rejection reason in the application log.
+
+This is crash containment and diagnosis, not a shader correctness fix: draws
+using a rejected pipeline are skipped and may leave objects or effects missing.
+The existing log does not identify the Metal compiler's reason. Verify entering
+the lobby on device, and inspect `Vulkan driver/validation` and `Pipeline rejected`
+messages if rendering is incomplete or the app still exits.

@@ -90,6 +90,8 @@ private:
     // because of multithreading, we want the pointers to remain stable
     unordered_map_stable<Sha256Hash, vk::ShaderModule> shaders;
     unordered_map_stable<uint64_t, vk::Pipeline> pipelines;
+    std::mutex failed_pipelines_mutex;
+    std::set<uint64_t> failed_pipelines;
 
     vk::PipelineShaderStageCreateInfo retrieve_shader(const SceGxmProgram *program, const Sha256Hash &hash, bool is_vertex, bool maskupdate, MemState &mem, const shader::Hints &hints, bool is_srgb = false);
     vk::PipelineVertexInputStateCreateInfo get_vertex_input_state(const SceGxmVertexProgram &vertex_program, MemState &mem);
