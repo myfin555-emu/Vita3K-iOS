@@ -632,7 +632,8 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
         const bool same_components = bytes_per_pixel_requested == bytes_per_pixel_in_store
             && vk::componentCount(info.texture.format) == vk::componentCount(vk_format);
         const vk::ComponentMapping resulting_swizzle = same_components
-            ? vkutil::color_to_texture_swizzle(info.swizzle, swizzle) : swizzle;
+            ? vkutil::color_to_texture_swizzle(info.swizzle, swizzle)
+            : swizzle;
 
         CastedTexture *casted = nullptr;
 
@@ -1383,7 +1384,8 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
             // RGB24 is stored as RGBA8 on the GPU. Allocate for the
             // host row pitch, not the smaller guest representation.
             const size_t host_stride = format_need_additional_memory(last_written_surface->format)
-                ? (last_written_surface->stride_bytes / 3) * 4 : last_written_surface->stride_bytes;
+                ? (last_written_surface->stride_bytes / 3) * 4
+                : last_written_surface->stride_bytes;
             copy_buffer.size = host_stride * last_written_surface->original_height;
             copy_buffer.init_buffer(vk::BufferUsageFlagBits::eTransferDst, vkutil::vma_mapped_alloc);
         }
