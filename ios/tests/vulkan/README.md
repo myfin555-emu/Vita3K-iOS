@@ -20,6 +20,13 @@ cmake --build build-vulkan-tests -j 2
 ctest --test-dir build-vulkan-tests --output-on-failure
 ```
 
+CTest prefers Mesa lavapipe when installed, discovering either `lvp_icd.json`
+or `lvp_icd.<architecture>.json`. It sets the selected manifest for the Vulkan
+test process so a stale driver path inherited from CI cannot hide the driver.
+To choose another installed driver, configure with
+`-DVITA3K_VULKAN_TEST_ICD=/absolute/path/to/driver.json`. Without lavapipe or an
+explicit override, the suite uses the Vulkan loader's normal selection.
+
 The build compiles each shared Vulkan helper as the first include, followed by
 the production Vulkan/VMA wrapper. Aggregate and designated-initializer checks
 catch Vulkan-Hpp configuration differences without injecting test-only macros.

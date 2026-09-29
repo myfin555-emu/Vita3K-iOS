@@ -31,6 +31,24 @@ endforeach()
 add_executable(vulkan_surface_tests VulkanSurfaceTests.cpp)
 target_link_libraries(vulkan_surface_tests PRIVATE vulkan_test_headers Vulkan::Vulkan ${CMAKE_DL_LIBS})
 add_test(NAME vulkan_surface_tests COMMAND vulkan_surface_tests)
+
+# Prefer a deterministic headless driver for this suite. Mesa packages use both
+# manifest names; a filename copied from another distribution may not exist.
+# A cache override also lets developers select a specific installed ICD.
+find_file(VITA3K_VULKAN_TEST_ICD
+    NAMES lvp_icd.json lvp_icd.${CMAKE_SYSTEM_PROCESSOR}.json
+    PATHS /usr/share/vulkan/icd.d /usr/local/share/vulkan/icd.d
+    DOC "Vulkan ICD manifest used by the renderer host tests")
+if(VITA3K_VULKAN_TEST_ICD)
+    if(NOT EXISTS "${VITA3K_VULKAN_TEST_ICD}")
+        message(FATAL_ERROR "Vulkan test ICD does not exist: ${VITA3K_VULKAN_TEST_ICD}")
+    endif()
+    message(STATUS "Vulkan test ICD: ${VITA3K_VULKAN_TEST_ICD}")
+    # Set both names for old/new loaders, overriding stale parent/CI settings
+    # only for this test process. Other tests and the emulator are unaffected.
+    set_tests_properties(vulkan_surface_tests PROPERTIES ENVIRONMENT
+        "VK_DRIVER_FILES=${VITA3K_VULKAN_TEST_ICD};VK_ICD_FILENAMES=${VITA3K_VULKAN_TEST_ICD}")
+endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME surface_cache_production_tests COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceCacheProductionTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
