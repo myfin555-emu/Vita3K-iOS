@@ -757,6 +757,8 @@ void PipelineCache::compiler_thread(MemState &mem) {
             *request->pipeline = pipeline;
         }
 
+        pipeline_ready.notify_all();
+
         request->vertex_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
         request->fragment_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
 
@@ -934,6 +936,9 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
     const vk::Pipeline pipeline_compiling = std::bit_cast<vk::Pipeline, uint64_t>(~0ULL);
     // if the pipeline is in the pipeline cache, we can expect its creation time to be almost instantaneous
     bool already_in_cache = false;
+    // Fresh or infrequently updated targets may be sampled for many frames.
+    // Dropping their first draw can leave permanent holes in later passes.
+    const bool may_defer = consider_for_async && can_use_deferred_compilation && use_async_compilation;
 
     // Also synchronizes the worker's result publication before reading it.
     std::unique_lock failure_lock(failed_pipelines_mutex);
@@ -942,11 +947,15 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
     auto it = pipelines.find(key);
     if (it != pipelines.end()) {
         if (it->second != nullptr) {
-            if (it->second == pipeline_compiling)
-                // pipeline is still compiling
-                return nullptr;
-            else
-                return it->second;
+            if (it->second == pipeline_compiling) {
+                if (may_defer)
+                    return nullptr;
+                // A previously deferred pipeline can become required by a
+                // full-screen draw or a new target. Wait for its existing job;
+                // never duplicate compilation or drop the required draw.
+                pipeline_ready.wait(failure_lock, [&] { return it->second != pipeline_compiling; });
+            }
+            return it->second;
         }
         already_in_cache = true;
     } else {
@@ -964,8 +973,7 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
     context.shader_hints.color_format = record.color_surface.colorFormat;
     context.shader_hints.attributes = &vertex_program_gxm.attributes;
 
-    // note: the flag can_use_deferred_compilation is not considered here because it causes way too many false positives
-    const bool compile_pipeline_async = !already_in_cache && consider_for_async && use_async_compilation;
+    const bool compile_pipeline_async = !already_in_cache && may_defer;
 
     if (compile_pipeline_async) {
         // create the pipeline compile request

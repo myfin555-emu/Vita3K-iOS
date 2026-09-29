@@ -1,0 +1,64 @@
+"""Compile the production native settings snapshot against distinct saved/live settings."""
+import pathlib
+import subprocess
+import sys
+import tempfile
+repo = pathlib.Path(__file__).resolve().parents[2]
+path = 'ios/src/UpstreamMain.cpp'
+source = (subprocess.check_output(['git', 'show', 'HEAD:' + path], cwd=repo, text=True)
+          if '--baseline' in sys.argv else (repo / path).read_text())
+start = source.index('Vita3KIOSSettings native_settings(')
+end = source.index('\nstruct ImportJob', start)
+code = r'''
+#include <vita3k_ios/NativeFrontend.h>
+#include <cassert>
+#include <utility>
+struct Settings : Vita3KIOSSettings {
+    bool disable_surface_sync = true;
+    std::string memory_mapping = "disabled";
+};
+struct Config : Settings {
+    Settings current_config;
+    std::vector<short> controller_binds;
+    int ios_jit_threads = 3, ios_emulator_ram_mb = 512, ios_jit_cache_mb = 16;
+};
+struct EmuEnvState { Config cfg; std::string vita_fs_path; };
+namespace app {
+struct Firmware { bool font_package = true, main_firmware = true, preinstalled_package = true; };
+Firmware get_firmware_state(EmuEnvState &) {return {};}
+}
+namespace config {
+std::vector<std::pair<std::string, bool>> get_modules_list(const std::string &, const std::vector<std::string> &) {return {};}
+}
+std::string firmware_version_display(EmuEnvState &) { return "3.74"; }
+int face_button_slot_for_physical(short n) { return n; }
+enum {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH};
+'''
+code += source[start:end]
+code += r'''
+int main() {
+    EmuEnvState env;
+    env.cfg.resolution_multiplier = 1.f;
+    env.cfg.current_config.resolution_multiplier = .75f;
+    env.cfg.high_accuracy = true;
+    env.cfg.current_config.high_accuracy = false;
+    env.cfg.lle_modules = {"saved"};
+    env.cfg.current_config.lle_modules = {"game-override"};
+    env.cfg.disable_surface_sync = false;
+    auto saved = native_settings(env);
+    assert(saved.resolution_multiplier == 1.f);
+    assert(saved.high_accuracy && saved.surface_sync);
+    assert(saved.lle_modules == std::vector<std::string>{"saved"});
+    // Saving an unrelated volume edit must not erase the pending resolution.
+    saved.audio_volume = 75;
+    env.cfg.resolution_multiplier = saved.resolution_multiplier;
+    assert(env.cfg.resolution_multiplier == 1.f);
+    assert(env.cfg.current_config.resolution_multiplier == .75f);
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    path = pathlib.Path(tmp)
+    (path / 'test.cpp').write_text(code)
+    subprocess.run([sys.argv[1], '-std=c++20', '-UNDEBUG', '-I' + str(repo / 'ios/include'), str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+    subprocess.run([str(path / 'test')], check=True)
+print('Production settings snapshot checks passed')

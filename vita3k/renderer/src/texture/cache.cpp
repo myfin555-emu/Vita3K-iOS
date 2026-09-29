@@ -37,6 +37,8 @@
 #include <xxhash.h>
 #endif
 
+#include <chrono>
+
 namespace renderer {
 namespace texture {
 
@@ -667,6 +669,21 @@ void TextureCache::cache_and_bind_texture(const SceGxmTexture &gxm_texture, MemS
     Address range_protect_end = 0;
 
     TextureCacheInfo *info;
+    const auto content_hash = [&](const TextureCacheInfo &entry) {
+#ifdef VITA3K_PLATFORM_IOS
+        const auto started = std::chrono::steady_clock::now();
+#endif
+        // Replacement/export hashes omit stride; ordinary cache hashes include
+        // the full first mip. Keep invalidation semantics identical.
+        const uint64_t hash = (import_textures || export_textures)
+            ? hash_texture_nostride(gxm_texture, mem)
+            : (hash_texture_data(gxm_texture, entry.texture_size, mem) ^ 1);
+#ifdef VITA3K_PLATFORM_IOS
+        diagnostic_hash_bytes += entry.texture_size;
+        diagnostic_hash_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+#endif
+        return hash;
+    };
     if (cached_gxm_texture_index == -1) {
         // Texture not found in cache.
         // get the least recently used texture, which info_list_head points to
@@ -714,13 +731,8 @@ void TextureCache::cache_and_bind_texture(const SceGxmTexture &gxm_texture, MemS
 #endif
 
         info->use_hash = should_use_hash;
-        if (info->use_hash) {
-            if (import_textures || export_textures)
-                info->hash = hash_texture_nostride(gxm_texture, mem);
-            else
-                // the xor 1 is to make sure it won't be the same as hash_texture_nostride
-                info->hash = hash_texture_data(gxm_texture, info->texture_size, mem) ^ 1;
-        }
+        if (info->use_hash)
+            info->hash = content_hash(*info);
     } else {
         // Texture is cached.
         index = cached_gxm_texture_index;
@@ -731,10 +743,7 @@ void TextureCache::cache_and_bind_texture(const SceGxmTexture &gxm_texture, MemS
             // dedupe was tried here for iOS and could serve stale texture
             // content when guest CPU writes race the renderer.
             const uint64_t previous_hash = info->hash;
-            if (import_textures || export_textures)
-                info->hash = hash_texture_nostride(gxm_texture, mem);
-            else
-                info->hash = hash_texture_data(gxm_texture, info->texture_size, mem) ^ 1;
+            info->hash = content_hash(*info);
 
             upload = previous_hash != info->hash;
         } else {
@@ -786,6 +795,9 @@ void TextureCache::cache_and_bind_texture(const SceGxmTexture &gxm_texture, MemS
         }
     }
     if (upload) {
+#ifdef VITA3K_PLATFORM_IOS
+        ++diagnostic_texture_uploads;
+#endif
         if (export_textures && !importing_texture)
             export_select(gxm_texture);
 

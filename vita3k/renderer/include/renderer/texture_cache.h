@@ -105,9 +105,14 @@ protected:
 public:
     Backend backend;
     bool use_protect = false;
-    // bumped by the backend on each new scene; when nonzero, a texture whose
-    // hash was already computed this scene is not re-hashed on later binds
+    // Bumped by the backend on each new scene. Texture hashes still validate
+    // every bind, since guest memory can change within a scene.
     uint64_t current_scene_timestamp = 0;
+#ifdef VITA3K_PLATFORM_IOS
+    uint64_t diagnostic_hash_bytes = 0;
+    uint64_t diagnostic_texture_uploads = 0;
+    double diagnostic_hash_ms = 0;
+#endif
     YUVConversionCache yuv_conversion_cache;
     // use a separate sampler cache
     bool use_sampler_cache = false;

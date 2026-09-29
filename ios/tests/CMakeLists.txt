@@ -84,3 +84,6 @@ set_tests_properties(single_flight_tests PROPERTIES TIMEOUT 15)
 
 add_test(NAME renderer_resource_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/RendererResourceTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(renderer_resource_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME settings_snapshot_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/SettingsSnapshotTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(settings_snapshot_tests PROPERTIES TIMEOUT 30)

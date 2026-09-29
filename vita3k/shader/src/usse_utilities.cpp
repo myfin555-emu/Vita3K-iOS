@@ -525,8 +525,6 @@ static spv::Function *make_fetch_memory_func_for_array(spv::Builder &b, spv::Id 
     spv::Id eight_cst = b.makeIntConstant(8);
     spv::Id four_cst = b.makeIntConstant(4);
     spv::Id one_cst = b.makeIntConstant(1);
-    spv::Id zero_cst = b.makeIntConstant(0);
-
     spv::Id addr = fetch_func->getParamId(0);
     spv::Id base_vector = b.createBinOp(spv::OpSDiv, type_i32, addr, sixteen_cst);
     spv::Id base_left = b.createBinOp(spv::OpSRem, type_i32, addr, sixteen_cst);
@@ -534,15 +532,17 @@ static spv::Function *make_fetch_memory_func_for_array(spv::Builder &b, spv::Id 
     spv::Id rem = b.createBinOp(spv::OpSRem, type_i32, base_left, four_cst);
     spv::Id rem_inv = b.createBinOp(spv::OpISub, type_i32, four_cst, rem);
 
-    // If int was shifted by more than 32 bits in nvidia glsl, the pipeline crashes.
-    // rem_inv_overflow is the flag used to make sure >> 32 is not executed.
-    spv::Id rem_inv_overflow = b.createBinOp(spv::OpIEqual, b.makeBoolType(), rem_inv, four_cst);
-    rem_inv = b.createTriOp(spv::OpSelect, type_i32, rem_inv_overflow, zero_cst, rem_inv);
+    spv::Id src = b.createLoad(utils::create_access_chain(b, spv::StorageClassStorageBuffer, buffer_container, { b.makeIntConstant(info.index_in_container), base_vector, base_offset }), spv::NoPrecision);
+
+    // Most uniform loads are aligned. Do not read the following word in that
+    // case: it may be beyond the end of this buffer, and doubles memory work
+    // for the common UI/transform path. It also avoids an undefined >> 32.
+    spv::Builder::If aligned(b.createBinOp(spv::OpIEqual, b.makeBoolType(), rem, b.makeIntConstant(0)), spv::SelectionControlMaskNone, b);
+    b.makeReturn(false, src);
+    aligned.makeEndIf();
 
     spv::Id rem_in_bits = b.createBinOp(spv::OpIMul, type_i32, rem, eight_cst);
     spv::Id rem_inv_in_bits = b.createBinOp(spv::OpIMul, type_i32, rem_inv, eight_cst);
-
-    spv::Id src = b.createLoad(utils::create_access_chain(b, spv::StorageClassStorageBuffer, buffer_container, { b.makeIntConstant(info.index_in_container), base_vector, base_offset }), spv::NoPrecision);
 
     spv::Id friend_offset = b.createBinOp(spv::OpIAdd, type_i32, base_offset, one_cst);
     spv::Id friend_vector = b.createBinOp(spv::OpIAdd, type_i32, base_vector, b.createBinOp(spv::OpSDiv, type_i32, friend_offset, b.makeIntConstant(4)));
@@ -553,9 +553,10 @@ static spv::Function *make_fetch_memory_func_for_array(spv::Builder &b, spv::Id 
     spv::Id src_casted = b.createUnaryOp(spv::OpBitcast, type_ui32, src);
     spv::Id src_friend_casted = b.createUnaryOp(spv::OpBitcast, type_ui32, src_friend);
 
-    spv::Id high_part = b.createBinOp(spv::OpShiftLeftLogical, type_ui32, src_casted, rem_in_bits);
-    spv::Id low_part = b.createBinOp(spv::OpShiftRightLogical, type_ui32, src_friend_casted, rem_inv_in_bits);
-    low_part = b.createTriOp(spv::OpSelect, type_ui32, rem_inv_overflow, b.makeUintConstant(0), low_part);
+    // Guest memory is little endian: discard the preceding bytes from src
+    // and put the following word's low bytes in the result's high bits.
+    spv::Id high_part = b.createBinOp(spv::OpShiftRightLogical, type_ui32, src_casted, rem_in_bits);
+    spv::Id low_part = b.createBinOp(spv::OpShiftLeftLogical, type_ui32, src_friend_casted, rem_inv_in_bits);
 
     spv::Id output = b.createBinOp(spv::OpBitwiseOr, type_ui32, high_part, low_part);
     spv::Id output_casted = b.createUnaryOp(spv::OpBitcast, type_f32, output);
@@ -622,6 +623,52 @@ spv::Id fetch_memory(spv::Builder &b, const SpirvShaderParameters &params, Spirv
     }
 
     return b.createFunctionCall(utils.fetch_memory, { addr });
+}
+
+// Mirror the mapped path's packed 8/16-bit register writes. The old unmapped
+// path copied byte_count / 4 floats and silently omitted a short final word.
+void buffer_unmapped_load(spv::Builder &b, const SpirvShaderParameters &params, SpirvUtilFunctions &utils, const FeatureState &features, Operand dest, spv::Id addr, uint32_t component_size, uint32_t nb_components) {
+    const auto i32 = b.makeIntType(32);
+    std::vector<spv::Id> components;
+    for (uint32_t i = 0; i < nb_components; ++i) {
+        auto component_addr = b.createBinOp(spv::OpIAdd, i32, addr, b.makeIntConstant(i * component_size));
+        if (component_size == 4) {
+            auto value = fetch_memory(b, params, utils, component_addr);
+            store(b, params, utils, features, dest, value, 0b1, 0);
+            ++dest.num;
+            continue;
+        }
+
+        // Read the containing word, including at the last byte/halfword of a
+        // buffer. A full unaligned fetch here could read past its end.
+        auto byte_offset = b.createBinOp(spv::OpBitwiseAnd, i32, component_addr, b.makeIntConstant(3));
+        auto aligned_addr = b.createBinOp(spv::OpBitwiseAnd, i32, component_addr, b.makeIntConstant(~3));
+        auto value = b.createUnaryOp(spv::OpBitcast, i32, fetch_memory(b, params, utils, aligned_addr));
+        auto shift = b.createBinOp(spv::OpIMul, i32, byte_offset, b.makeIntConstant(8));
+        if (component_size == 2) {
+            // A halfword at byte 3 straddles two words. Assemble its bytes
+            // before extracting, rather than issuing a bitfield past bit 31.
+            const auto partial = b.createBinOp(spv::OpShiftRightLogical, i32, value, shift);
+            const auto assembled = b.createVariable(spv::NoPrecision, spv::StorageClassFunction, i32, "halfword");
+            b.createStore(partial, assembled);
+            spv::Builder::If crosses_word(b.createBinOp(spv::OpIEqual, b.makeBoolType(), byte_offset, b.makeIntConstant(3)), spv::SelectionControlMaskNone, b);
+            const auto next_addr = b.createBinOp(spv::OpIAdd, i32, aligned_addr, b.makeIntConstant(4));
+            const auto next_word = b.createUnaryOp(spv::OpBitcast, i32, fetch_memory(b, params, utils, next_addr));
+            const auto high_byte = b.createBinOp(spv::OpShiftLeftLogical, i32, next_word, b.makeIntConstant(8));
+            b.createStore(b.createBinOp(spv::OpBitwiseOr, i32, partial, high_byte), assembled);
+            crosses_word.makeEndIf();
+            value = b.createLoad(assembled, spv::NoPrecision);
+            shift = b.makeIntConstant(0);
+        }
+        value = b.createOp(spv::OpBitFieldSExtract, i32, { value, shift, b.makeIntConstant(component_size * 8) });
+        components.push_back(value);
+        if (components.size() == 4 || i + 1 == nb_components) {
+            auto packed = components.size() == 1 ? components[0] : b.createCompositeConstruct(b.makeVectorType(i32, components.size()), components);
+            store(b, params, utils, features, dest, packed, (1 << components.size()) - 1, 0);
+            dest.num += component_size;
+            components.clear();
+        }
+    }
 }
 
 static spv::Id make_or_get_buffer_ptr(spv::Builder &b, shader::usse::utils::SpirvUtilFunctions &utils, int nb_components, int stride = 16, bool is_write = false) {

@@ -37,3 +37,12 @@ independent native 64-bit sums; it is not a general shader or GPU emulator.
 This does **not** run Apple's Metal compiler, execute shaders on an iPhone,
 validate Vulkan synchronization on a GPU, or establish game compatibility/FPS.
 The ordinary dependency-free suite remains `cmake -S ios/tests -B build-tests`.
+
+### Unmapped uniform data
+
+Enable `-DVITA3K_EXECUTE_SHADER_TESTS=ON` when Vulkan headers, a loader and a
+compute driver are installed. `uniform_execution_tests` executes a module built
+by the production uniform helpers, checks all byte alignments of a 32-byte
+input, and checks packed 8/16-bit loads of 1–16 components. The reference uses
+CPU byte copies and verifies untouched register lanes, including buffer tails.
+It can run on a software Vulkan driver; it does not establish iPhone FPS.

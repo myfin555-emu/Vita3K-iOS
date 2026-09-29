@@ -23,6 +23,7 @@
 #include <vkutil/vkutil.h>
 
 #include <array>
+#include <condition_variable>
 #include <limits>
 #include <map>
 #include <set>
@@ -93,6 +94,7 @@ private:
     unordered_map_stable<Sha256Hash, vk::ShaderModule> shaders;
     unordered_map_stable<uint64_t, vk::Pipeline> pipelines;
     std::mutex failed_pipelines_mutex;
+    std::condition_variable pipeline_ready;
     std::set<uint64_t> failed_pipelines;
 
     vk::PipelineShaderStageCreateInfo retrieve_shader(const SceGxmProgram *program, const Sha256Hash &hash, bool is_vertex, bool maskupdate, MemState &mem, const shader::Hints &hints, bool is_srgb = false);
@@ -115,7 +117,7 @@ public:
 
     // modified by the surface cache, estimates if it is safe to use async pipeline compilation
     // (i.e that it does not causes permanent graphical issues)
-    bool can_use_deferred_compilation;
+    bool can_use_deferred_compilation = false;
 
     vk::DescriptorSetLayout uniforms_layout;
     // used for the mask, color attachment

@@ -327,7 +327,7 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
     }
 
     // Resolve first so skipped, unqueried draws do not split render passes.
-    if (context.refresh_pipeline || type != context.last_primitive) {
+    if (context.refresh_pipeline || !context.current_pipeline || type != context.last_primitive) {
         context.refresh_pipeline = false;
         context.last_primitive = type;
 

@@ -701,7 +701,11 @@ bool firmware_setup_complete(const EmuEnvState &emuenv) {
 }
 
 Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
-    const auto &current = emuenv.cfg.current_config;
+    // This snapshot backs the global editor and the base for per-game edits.
+    // current_config may still contain a running game's overrides or an old
+    // resolution retained until restart. Publishing it here would overwrite
+    // saved preferences on the next unrelated settings save.
+    const auto &current = emuenv.cfg;
     const auto firmware = app::get_firmware_state(emuenv);
     std::vector<std::string> missing;
     if (!firmware.font_package)

@@ -254,6 +254,104 @@ static void test_address_arithmetic(const std::string &directory) {
     require(bool(file) && bool(expected), "address fixture output failed");
 }
 
+// Run this module on Vulkan with a byte ramp as input. Expected words are
+// calculated by the runner from bytes, independently of the shader generator.
+static void test_subword_translation(const std::string &directory) {
+    constexpr auto vldst = "111oopppsnmycrbakkkkddeetgffihjlqquuvvvvvvvwwwwwwwxxxxxxxzzzzzzz";
+    constexpr auto vcomp = "00110pppsddyenr-aaaaobbccmmff-ttkk--ggggggg-------hhhhhhh---wwww";
+    for (uint32_t type : {1u, 2u}) {
+        for (uint32_t count : {1u, 2u, 3u, 4u, 5u, 7u, 16u}) {
+            SyntheticProgram fixture;
+            fixture.program.parameter_count = 1;
+            fixture.parameters[0].category = SCE_GXM_PARAMETER_CATEGORY_UNIFORM_BUFFER;
+            fixture.parameters[0].resource_index = 0;
+            fixture.parameters[0].array_size = 32;
+            fixture.program.primary_program_instr_count = 2;
+            fixture.code[0] = encode(vldst, {{'o', 1}, {'m', 1}, {'b', 1}, {'q', 2}, {'a', 1}, {'u', 2}, {'k', count - 1}, {'f', type}});
+            fixture.code[1] = encode(vcomp, {{'b', 3}, {'g', 2}, {'w', 15}, {'n', 1}});
+            auto words = compile(fixture, false, "subword_" + std::to_string(type) + "_" + std::to_string(count), directory);
+            require(count_op(words, spv::OpBitFieldSExtract) >= count, "unmapped subword load omitted components");
+        }
+    }
+}
+
+static void test_unmapped_fetch(const std::string &directory) {
+    spv::SpvBuildLogger logger;
+    spv::Builder b(0x00010000, 0, &logger);
+    b.addCapability(spv::CapabilityShader);
+    b.addExtension("SPV_KHR_storage_buffer_storage_class");
+    b.setMemoryModel(spv::AddressingModelLogical, spv::MemoryModelGLSL450);
+    auto main = b.makeEntryPoint("main");
+    b.addEntryPoint(spv::ExecutionModelGLCompute, main, "main");
+    b.addExecutionMode(main, spv::ExecutionModeLocalSize, 1, 1, 1);
+    const auto f32 = b.makeFloatType(32), u32 = b.makeUintType(32);
+    const auto v4 = b.makeVectorType(f32, 4);
+    auto array = b.makeArrayType(v4, b.makeUintConstant(2), 16);
+    b.addDecoration(array, spv::DecorationArrayStride, 16);
+    auto structure = b.makeStructType({array}, "Input");
+    b.addDecoration(structure, spv::DecorationBlock);
+    b.addMemberDecoration(structure, 0, spv::DecorationOffset, 0);
+    SpirvShaderParameters params{};
+    params.buffer_container = b.createVariable(spv::NoPrecision, spv::StorageClassStorageBuffer, structure, "input");
+    b.addDecoration(params.buffer_container, spv::DecorationDescriptorSet, 0);
+    b.addDecoration(params.buffer_container, spv::DecorationBinding, 0);
+    params.buffers.emplace(0, SpirvUniformBufferInfo{0, 32, 0});
+    auto output_array = b.makeArrayType(u32, b.makeUintConstant(405), 4);
+    b.addDecoration(output_array, spv::DecorationArrayStride, 4);
+    auto output_structure = b.makeStructType({output_array}, "Output");
+    b.addDecoration(output_structure, spv::DecorationBlock);
+    b.addMemberDecoration(output_structure, 0, spv::DecorationOffset, 0);
+    auto output = b.createVariable(spv::NoPrecision, spv::StorageClassStorageBuffer, output_structure, "output");
+    b.addDecoration(output, spv::DecorationDescriptorSet, 0);
+    b.addDecoration(output, spv::DecorationBinding, 1);
+    utils::SpirvUtilFunctions utils{};
+    for (int offset = 0; offset <= 28; ++offset) {
+        auto value = utils::fetch_memory(b, params, utils, b.makeIntConstant(offset));
+        auto target = utils::create_access_chain(b, spv::StorageClassStorageBuffer, output, {b.makeIntConstant(0), b.makeIntConstant(offset)});
+        b.createStore(b.createUnaryOp(spv::OpBitcast, u32, value), target);
+    }
+    const auto register_array = b.makeArrayType(v4, b.makeUintConstant(2), 0);
+    const auto sentinel = b.createUnaryOp(spv::OpBitcast, f32, b.makeUintConstant(0xa5a5a5a5));
+    const auto sentinel_vec = b.createCompositeConstruct(v4, {sentinel, sentinel, sentinel, sentinel});
+    const auto sentinel_registers = b.createCompositeConstruct(register_array, {sentinel_vec, sentinel_vec});
+    params.temps = b.createVariable(spv::NoPrecision, spv::StorageClassPrivate, register_array, "registers");
+    utils.std_builtins = b.import("GLSL.std.450");
+    FeatureState features{};
+    unsigned result_index = 29;
+    for (unsigned mode : {0u, 1u, 2u}) {
+        const unsigned size = mode == 0 ? 1 : 2;
+        const unsigned end = mode == 2 ? 31 : 32;
+        for (unsigned count = 1; count <= (mode == 2 ? 15u : 16u); ++count) {
+            b.createStore(sentinel_registers, params.temps);
+            Operand dest{};
+            dest.bank = RegisterBank::TEMP;
+            dest.num = 0;
+            dest.type = size == 1 ? DataType::INT8 : DataType::INT16;
+            dest.swizzle = SWIZZLE_CHANNEL_4_DEFAULT;
+            utils::buffer_unmapped_load(b, params, utils, features, dest, b.makeIntConstant(end - size * count), size, count);
+            for (unsigned word = 0; word < 8; ++word) {
+                const auto source = utils::create_access_chain(b, spv::StorageClassPrivate, params.temps, {b.makeIntConstant(word / 4), b.makeIntConstant(word % 4)});
+                const auto value = b.createUnaryOp(spv::OpBitcast, u32, b.createLoad(source, spv::NoPrecision));
+                const auto target = utils::create_access_chain(b, spv::StorageClassStorageBuffer, output, {b.makeIntConstant(0), b.makeIntConstant(result_index++)});
+                b.createStore(value, target);
+            }
+        }
+    }
+    b.makeReturn(false);
+    b.leaveFunction();
+    std::vector<uint32_t> words;
+    b.dump(words);
+    std::ofstream file(directory + "/unmapped_fetch.spv", std::ios::binary);
+    file.write(reinterpret_cast<const char *>(words.data()), words.size() * sizeof(uint32_t));
+    require(bool(file), "unmapped fixture output failed");
+    spirv_cross::CompilerMSL msl(words);
+    auto options = msl.get_msl_options();
+    options.platform = spirv_cross::CompilerMSL::Options::iOS;
+    options.set_msl_version(2, 3);
+    msl.set_msl_options(options);
+    require(!msl.compile().empty(), "unmapped fixture MSL generation failed");
+}
+
 static void test_mapped_buffer_access(const std::string &directory) {
     spv::SpvBuildLogger logger;
     spv::Builder b(0x00010000, 0, &logger);
@@ -285,10 +383,13 @@ static void test_mapped_buffer_access(const std::string &directory) {
     utils.std_builtins = b.import("GLSL.std.450");
     Operand dest{};
     dest.bank = RegisterBank::TEMP;
+            dest.num = 0;
     dest.type = DataType::F32;
     dest.swizzle = SWIZZLE_CHANNEL_4_DEFAULT;
     for (unsigned component_size : { 1u, 2u, 4u }) {
         for (bool store : { false, true }) {
+            if (store && component_size != 4) continue;
+            dest.type = component_size == 4 ? DataType::F32 : (component_size == 2 ? DataType::INT16 : DataType::INT8);
             utils::buffer_address_access(b, params, utils, features, dest, 0,
                 b.makeIntConstant(0x10000000 - 4), component_size, 4, -1, store);
         }
@@ -359,6 +460,8 @@ int main(int argc, char **argv) {
         test_interlock_discard(argv[1]);
         test_address_arithmetic(argv[1]);
         test_mapped_buffer_access(argv[1]);
+        test_unmapped_fetch(argv[1]);
+        test_subword_translation(argv[1]);
         std::cout << "Shader/GXM regression checks passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

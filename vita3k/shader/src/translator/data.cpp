@@ -625,10 +625,7 @@ bool USSETranslatorVisitor::vldst(
         }
 
         to_store.num = dest_n;
-        if (m_features.enable_memory_mapping)
-            to_store.type = type_to_ldst;
-        else
-            to_store.type = DataType::F32;
+        to_store.type = type_to_ldst;
     }
 
     if (inst.opr.src1.bank == RegisterBank::IMMEDIATE) {
@@ -786,12 +783,8 @@ bool USSETranslatorVisitor::vldst(
             return true;
         }
 
-        for (int i = 0; i < total_bytes_fo_fetch / 4; ++i) {
-            spv::Id offset = m_b.createBinOp(spv::OpIAdd, m_b.makeIntType(32), base, m_b.makeIntConstant(4 * i));
-            spv::Id src = utils::fetch_memory(m_b, m_spirv_params, m_util_funcs, offset);
-            store(to_store, src, 0b1);
-            to_store.num += 1;
-        }
+        utils::buffer_unmapped_load(m_b, m_spirv_params, m_util_funcs, m_features,
+            to_store, base, get_data_type_size(type_to_ldst), current_number_to_fetch);
     }
 
     END_REPEAT()

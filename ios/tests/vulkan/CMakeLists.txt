@@ -87,3 +87,7 @@ if(VITA3K_COMPILE_UPLOAD_OBJECTS)
         ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/include
         ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include)
 endif()
+
+add_test(NAME pipeline_readiness_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/PipelineReadinessTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
+set_tests_properties(pipeline_readiness_tests PROPERTIES TIMEOUT 30)

@@ -548,3 +548,32 @@ and guest memory remain separate consumers; there is no claim of a fixed total
 RAM cap or measured FPS gain. Device acceptance still requires Gravity Rush
 opening/gameplay and God Eater gameplay/2D-menu comparisons on the same hardware,
 settings and warm caches, including repeated scene/menu transitions and shutdown.
+
+### Unmapped shader loads and required pipeline draws (cache version 19)
+
+The latest supplied Gravity Rush/God Eater logs identify build 5a076de, high
+accuracy, unmapped memory and resolution 0.75. They do not show the steady God
+Eater dialogue slowdown being caused by skipped pipeline compilation.
+
+Two production shader bugs were reproduced with synthetic inputs: unaligned
+uniform reads assembled little-endian words in the wrong direction, and
+unmapped 8/16-bit loads omitted short words. These are corrected, with aligned
+loads also avoiding an unnecessary next-word access. Shader cache version 19
+rebuilds old generated code automatically. The Vulkan execution regression
+checks exact bytes, packed register values and preserved neighboring lanes;
+SPIRV-Cross also generates iOS MSL. These checks do not reproduce the games.
+
+Pipeline compilation now respects the surface cache's indication that a draw
+must not be deferred. A required draw waits for an already queued pipeline;
+ordinary draws retry an unresolved pipeline. This can add a first-use compile
+pause instead of leaving a required render target incomplete. It is not a
+steady-state FPS fix. The global settings editor now reads saved preferences,
+so pending resolution/high-accuracy values or a game's overrides cannot be
+written back as global values on an unrelated save.
+
+The existing 300-frame diagnostic adds texture hashing time, first-mip input
+bytes and upload count. It continues validating texture content on every bind.
+The supplied captures cannot establish the remaining performance bottleneck or
+prove every black/RGB/stretched scene is fixed. Device testing on both titles
+and a native iOS build are still required; no GPU path or quality setting was
+silently relaxed for God Eater.
