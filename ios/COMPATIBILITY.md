@@ -413,6 +413,11 @@ finish writing. Starting with it off preserves the previous log file. Native
 operating-system/driver diagnostics are outside this switch. The iOS pending log
 queue now holds at most 4096 messages instead of 65536.
 
+The collection switch also takes precedence over a saved `log-level: off` on
+iOS: that level uses Debug verbosity while collection is enabled, so turning
+the switch back on resumes file logging without editing the config. Other
+verbosity levels are retained. Normal output is flushed to disk once a second.
+
 The supplied 900cbe7 device capture still contains Metal
 `air.simd_is_helper_thread` pipeline failures with High Accuracy enabled, and
 very low available process memory during gameplay. These failures can leave

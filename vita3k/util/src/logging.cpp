@@ -167,6 +167,13 @@ ExitCode init(const Root &root_paths, bool use_stdout, bool enabled) {
 
 void set_level(spdlog::level::level_enum log_level) {
     const std::lock_guard<std::mutex> lock(s_level_mutex);
+#if defined(VITA3K_PLATFORM_IOS)
+    // The iOS collection switch owns the off state. A saved desktop config
+    // with log-level: off must not keep logging disabled when it is enabled
+    // in Settings, including after loading config or adding an archive sink.
+    if (log_level == spdlog::level::off)
+        log_level = spdlog::level::debug;
+#endif
     s_requested_level = log_level;
     spdlog::set_level(s_logging_enabled ? log_level : spdlog::level::off);
 }

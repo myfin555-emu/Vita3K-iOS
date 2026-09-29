@@ -65,6 +65,23 @@ int main() {
     logging::set_enabled(true);
     assert(spdlog::actual == spdlog::level::debug);
     assert(logging::is_enabled());
+    // A saved off level must not defeat the iOS Settings switch, regardless
+    // of whether config is loaded before or after collection is enabled.
+    logging::set_level(spdlog::level::off);
+#if defined(VITA3K_PLATFORM_IOS)
+    assert(spdlog::actual == spdlog::level::debug);
+#else
+    assert(spdlog::actual == spdlog::level::off);
+#endif
+    logging::set_enabled(false);
+    logging::set_level(spdlog::level::off);
+    assert(spdlog::actual == spdlog::level::off);
+    logging::set_enabled(true);
+#if defined(VITA3K_PLATFORM_IOS)
+    assert(spdlog::actual == spdlog::level::debug);
+#else
+    assert(spdlog::actual == spdlog::level::off);
+#endif
     logging::set_enabled(false);
     logging::set_level(spdlog::level::warn);
     assert(spdlog::actual == spdlog::level::off);
@@ -105,9 +122,11 @@ with tempfile.TemporaryDirectory() as tmp:
     cpp = pathlib.Path(tmp) / 'resource.cpp'
     binary = pathlib.Path(tmp) / 'resource'
     cpp.write_text(source)
-    subprocess.run([sys.argv[1], '-std=c++17', '-pthread', '-Wall', '-Wextra', '-Werror',
-                    '-I' + str(repo / 'vita3k/renderer/include'), str(cpp), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
+    for platform_flags in ([], ['-DVITA3K_PLATFORM_IOS']):
+        subprocess.run([sys.argv[1], '-std=c++17', '-pthread', '-Wall', '-Wextra', '-Werror',
+                        *platform_flags, '-I' + str(repo / 'vita3k/renderer/include'),
+                        str(cpp), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
 
 # Integration guards complement the executed state transitions above.
 logging = (repo / 'vita3k/util/src/logging.cpp').read_text()
