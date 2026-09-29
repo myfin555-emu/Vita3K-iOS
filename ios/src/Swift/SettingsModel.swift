@@ -27,9 +27,7 @@ final class SettingsModel: ObservableObject {
     let availableModules: [String]
     @Published var audioVolume: Double
     @Published var textureCache: Bool
-    @Published var jitThreadsText: String
     @Published var emulatorRAMText: String
-    @Published var jitCacheText: String
     @Published var cpuOptimizations: Bool
     @Published var ngsAudio: Bool
     @Published var asyncPipelineCompilation: Bool
@@ -72,9 +70,7 @@ final class SettingsModel: ObservableObject {
         availableModules = Array(Set(settings.availableModules + settings.lleModules)).sorted()
         audioVolume = Double(min(100, max(0, settings.audioVolume)))
         textureCache = settings.textureCache
-        jitThreadsText = String(settings.jitThreads)
         emulatorRAMText = String(settings.emulatorRAMMB)
-        jitCacheText = String(settings.jitCacheMB)
         cpuOptimizations = settings.cpuOptimizations
         ngsAudio = settings.ngsAudio
         asyncPipelineCompilation = settings.asyncPipelineCompilation
@@ -98,14 +94,8 @@ final class SettingsModel: ObservableObject {
         return value
     }
 
-    var validJITThreads: Int? { wholeNumber(jitThreadsText, in: 1...64) }
-    var validJITCacheMB: Int? { wholeNumber(jitCacheText, in: 16...128) }
     var validEmulatorRAMMB: Int? { wholeNumber(emulatorRAMText, in: 512...2048) }
-    var maxJITCacheMB: Int? {
-        guard let count = validJITThreads, let size = validJITCacheMB else { return nil }
-        return count * size
-    }
-    var canSave: Bool { isPerGame || (validJITThreads != nil && validJITCacheMB != nil && validEmulatorRAMMB != nil) }
+    var canSave: Bool { isPerGame || validEmulatorRAMMB != nil }
 
     func setModule(_ name: String, enabled: Bool) {
         lleModules.removeAll { $0 == name }
@@ -134,9 +124,7 @@ final class SettingsModel: ObservableObject {
         settings.lleModules = lleModules
         settings.audioVolume = Int(audioVolume)
         settings.textureCache = textureCache
-        if !isPerGame, let count = validJITThreads, let size = validJITCacheMB, let ram = validEmulatorRAMMB {
-            settings.jitThreads = count
-            settings.jitCacheMB = size
+        if !isPerGame, let ram = validEmulatorRAMMB {
             settings.emulatorRAMMB = ram
         }
         settings.cpuOptimizations = cpuOptimizations

@@ -30,7 +30,7 @@
 #include <vector>
 
 namespace {
-std::size_t configured_threads = 37; // Last supplied AOT snapshot: 37 guest threads.
+std::size_t configured_threads = 2; // Overridden by the automatic device budget at startup.
 
 struct Worker {
     std::mutex mutex;

@@ -15,6 +15,10 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#ifdef VITA3K_PLATFORM_IOS
+#include <ctrl/virtual_pad.h>
+#endif
+
 #include <ctrl/ctrl.h>
 #include <ctrl/functions.h>
 #include <ctrl/state.h>
@@ -217,34 +221,52 @@ static void map_circular_stick_to_vita_axes(float &x, float &y) {
 #endif
 
 static void apply_controller(EmuEnvState &emuenv, uint32_t *buttons, float axes[4], SDL_Gamepad *controller, bool ext) {
+#ifdef VITA3K_PLATFORM_IOS
+    const auto touch = ctrl::virtual_pad.snapshot();
+    const bool use_touch = touch.id != 0 && touch.id == SDL_GetGamepadID(controller);
+#endif
+    const auto read_button = [&](SDL_GamepadButton button) {
+#ifdef VITA3K_PLATFORM_IOS
+        if (use_touch)
+            return touch.button(static_cast<int>(button));
+#endif
+        return SDL_GetGamepadButton(controller, button);
+    };
+    const auto read_axis = [&](SDL_GamepadAxis axis) {
+#ifdef VITA3K_PLATFORM_IOS
+        if (use_touch)
+            return touch.axis(static_cast<int>(axis));
+#endif
+        return SDL_GetGamepadAxis(controller, axis);
+    };
     const auto &axis_binds = emuenv.cfg.controller_axis_binds;
 
     if (ext) {
         for (const auto &binding : get_controller_bindings_ext(emuenv)) {
-            if (SDL_GetGamepadButton(controller, binding.controller)) {
+            if (read_button(binding.controller)) {
                 *buttons |= binding.button;
             }
         }
 
-        if (SDL_GetGamepadAxis(controller, static_cast<SDL_GamepadAxis>(axis_binds[4])) > 0x3FFF) {
+        if (read_axis(static_cast<SDL_GamepadAxis>(axis_binds[4])) > 0x3FFF) {
             *buttons |= SCE_CTRL_L2;
         }
-        if (SDL_GetGamepadAxis(controller, static_cast<SDL_GamepadAxis>(axis_binds[5])) > 0x3FFF) {
+        if (read_axis(static_cast<SDL_GamepadAxis>(axis_binds[5])) > 0x3FFF) {
             *buttons |= SCE_CTRL_R2;
         }
     } else {
         for (const auto &binding : get_controller_bindings(emuenv)) {
-            if (SDL_GetGamepadButton(controller, binding.controller)) {
+            if (read_button(binding.controller)) {
                 *buttons |= binding.button;
             }
         }
     }
 
     auto &analog_multiplier = emuenv.cfg.controller_analog_multiplier;
-    float left_x = axis_to_axis(SDL_GetGamepadAxis(controller, static_cast<SDL_GamepadAxis>(axis_binds[0])), analog_multiplier);
-    float left_y = axis_to_axis(SDL_GetGamepadAxis(controller, static_cast<SDL_GamepadAxis>(axis_binds[1])), analog_multiplier);
-    float right_x = axis_to_axis(SDL_GetGamepadAxis(controller, static_cast<SDL_GamepadAxis>(axis_binds[2])), analog_multiplier);
-    float right_y = axis_to_axis(SDL_GetGamepadAxis(controller, static_cast<SDL_GamepadAxis>(axis_binds[3])), analog_multiplier);
+    float left_x = axis_to_axis(read_axis(static_cast<SDL_GamepadAxis>(axis_binds[0])), analog_multiplier);
+    float left_y = axis_to_axis(read_axis(static_cast<SDL_GamepadAxis>(axis_binds[1])), analog_multiplier);
+    float right_x = axis_to_axis(read_axis(static_cast<SDL_GamepadAxis>(axis_binds[2])), analog_multiplier);
+    float right_y = axis_to_axis(read_axis(static_cast<SDL_GamepadAxis>(axis_binds[3])), analog_multiplier);
 #ifdef VITA3K_PLATFORM_IOS
     map_circular_stick_to_vita_axes(left_x, left_y);
     map_circular_stick_to_vita_axes(right_x, right_y);

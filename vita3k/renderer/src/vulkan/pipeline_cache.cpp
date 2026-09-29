@@ -242,11 +242,9 @@ void PipelineCache::init(bool support_rasterized_order_access) {
     else
         nb_worker_threads = 1;
 #ifdef VITA3K_PLATFORM_IOS
-    // The first boot of a title in each app process pays the full
-    // SPIR-V -> MSL -> Metal binary cost for every pipeline while draws are
-    // skipped (the white-screen wait). The 6-core A-series chips land on two
-    // workers with the desktop table; give the burst more parallelism.
-    nb_worker_threads = std::max(nb_worker_threads, 4);
+    // Compiling four Metal pipelines alongside the guest, audio and renderer
+    // oversubscribes older phones. Bound the burst, keeping UI/input runnable.
+    nb_worker_threads = std::min(nb_worker_threads, 2);
 #endif
 
     if (use_async_compilation) {

@@ -35,6 +35,7 @@
 #include <config/settings.h>
 #include <config/state.h>
 #include <config/version.h>
+#include <cpu/automatic_jit.h>
 #include <cpu/functions.h>
 #include <cpu/impl/pooled_cpu.h>
 #include <ctrl/functions.h>
@@ -540,7 +541,13 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
             return false;
         }
 
-        cfg.ios_jit_threads = std::clamp(cfg.ios_jit_threads, 1, 64);
+        const auto jit_budget = cpu::automatic_jit_budget(
+            std::thread::hardware_concurrency(), os_proc_available_memory());
+        // Migrate old manual settings, including the 37-slot default.
+        cfg.ios_jit_threads = static_cast<int>(jit_budget.slots);
+        cfg.ios_jit_cache_mb = static_cast<int>(jit_budget.cache_mb);
+        LOG_INFO("iOS automatic JIT: {} shared slots, {} MiB code cache maximum, allocated on demand",
+            jit_budget.slots, jit_budget.slots * jit_budget.cache_mb);
         cfg.ios_emulator_ram_mb = std::clamp(cfg.ios_emulator_ram_mb, 512, 2048);
         set_ios_jit_threads(cfg.ios_jit_threads);
         set_ios_guest_memory_limit(static_cast<uint64_t>(cfg.ios_emulator_ram_mb) * 1024 * 1024);
@@ -2285,9 +2292,10 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     desired.lle_modules = settings.lle_modules;
     desired.audio_volume = std::clamp(settings.audio_volume, 0, 100);
     desired.texture_cache = settings.texture_cache;
-    desired.ios_jit_threads = std::clamp(settings.jit_threads, 1, 64);
+    // JIT settings are chosen at startup; stale UI/persisted values cannot override them.
+    desired.ios_jit_threads = emuenv.cfg.ios_jit_threads;
     desired.ios_emulator_ram_mb = std::clamp(settings.emulator_ram_mb, 512, 2048);
-    desired.ios_jit_cache_mb = std::clamp(settings.jit_cache_mb, 16, 128);
+    desired.ios_jit_cache_mb = emuenv.cfg.ios_jit_cache_mb;
     desired.ngs_enable = settings.ngs_enable;
     desired.async_pipeline_compilation = settings.async_pipeline_compilation;
     desired.anisotropic_filtering = settings.anisotropic_filtering;
@@ -2304,9 +2312,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         desired.controller_binds[SDL_GAMEPAD_BUTTON_NORTH] = face_button_physical_for_slot(settings.bind_triangle);
     }
 
-    const bool jit_cache_changed = desired.ios_jit_cache_mb != emuenv.cfg.ios_jit_cache_mb
-        || desired.ios_jit_threads != emuenv.cfg.ios_jit_threads
-        || desired.ios_emulator_ram_mb != emuenv.cfg.ios_emulator_ram_mb;
+    const bool ram_budget_changed = desired.ios_emulator_ram_mb != emuenv.cfg.ios_emulator_ram_mb;
     const auto result = app::commit_settings(emuenv, desired);
     emuenv.display.fps_hack = false;
     emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
@@ -2314,8 +2320,8 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     restart_required.reserve(result.restart_required_settings.size());
     for (const auto setting : result.restart_required_settings)
         restart_required.push_back(restart_setting_name(setting));
-    if (jit_cache_changed)
-        restart_required.push_back("JIT threads / memory (restart the app)");
+    if (ram_budget_changed)
+        restart_required.push_back("Emulated RAM budget (restart the app)");
     vita3k_ios_report_settings_result(restart_required);
     LOG_INFO("iOS settings saved: runtime_applied={} restart_required={}",
         result.runtime_settings_applied, restart_required.size());
@@ -2997,6 +3003,7 @@ int main(int argc, char *argv[]) {
     Uint64 perf_last_ms = SDL_GetTicks();
     std::size_t perf_last_frame_count = emuenv->frame_count;
     Uint64 playtime_checkpoint_ms = perf_last_ms;
+    Uint64 memory_checkpoint_ms = perf_last_ms;
 
     bool running = true;
     while (running) {
@@ -3097,6 +3104,12 @@ int main(int argc, char *argv[]) {
                 perf_last_ms = now_ms;
                 const float frametime_ms = fps > 0.01f ? 1000.0f / fps : 0.0f;
                 vita3k_ios_update_perf_overlay(fps, frametime_ms);
+                if (now_ms - memory_checkpoint_ms >= 30000) {
+                    memory_checkpoint_ms = now_ms;
+                    LOG_INFO("iOS gameplay: fps={:.1f} frame_ms={:.1f} memory_headroom_mb={} jit_slots={} jit_cache_mb={}",
+                        fps, frametime_ms, os_proc_available_memory() / (1024 * 1024),
+                        get_ios_jit_threads(), get_ios_jit_cache_size() / (1024 * 1024));
+                }
             }
             // Persist progress periodically, not only on a clean in-app quit.
             // iOS users commonly terminate a stalled title from the app

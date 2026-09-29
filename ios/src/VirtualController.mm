@@ -5,6 +5,7 @@
 #include <vita3k_ios/NativeFrontend.h>
 
 #include <SDL3/SDL.h>
+#include <ctrl/virtual_pad.h>
 
 #import <UIKit/UIKit.h>
 
@@ -181,6 +182,7 @@ bool vita3k_ios_attach_virtual_controller() {
         g_virtual_joystick_id = 0;
         return false;
     }
+    ctrl::virtual_pad.attach(g_virtual_joystick_id);
     // Trigger axes rest at minimum on a real pad; virtual axes default to 0
     // (half pressed), so park them explicitly.
     SDL_SetJoystickVirtualAxis(g_virtual_joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
@@ -326,16 +328,19 @@ void vita3k_ios_report_safe_area_top_pixels(const float pixels) {
 void vita3k_ios_virtual_pad_set_button(const int button, const bool pressed) {
     if (!g_virtual_joystick)
         return;
+    ctrl::virtual_pad.button(button, pressed);
     SDL_SetJoystickVirtualButton(g_virtual_joystick, button, pressed);
 }
 
 void vita3k_ios_virtual_pad_set_axis(const int axis, const short value) {
     if (!g_virtual_joystick)
         return;
+    ctrl::virtual_pad.axis(axis, value);
     SDL_SetJoystickVirtualAxis(g_virtual_joystick, axis, value);
 }
 
 void vita3k_ios_virtual_pad_release_all() {
+    ctrl::virtual_pad.release_all();
     if (!g_virtual_joystick)
         return;
     // Every Vita-relevant button and axis, so a control held when a session
@@ -362,6 +367,7 @@ void vita3k_ios_set_physical_controller_connected(bool connected) {
 }
 
 void vita3k_ios_detach_virtual_controller() {
+    ctrl::virtual_pad.attach(0);
     if (g_virtual_joystick)
         SDL_CloseJoystick(g_virtual_joystick);
     if (g_virtual_joystick_id != 0)

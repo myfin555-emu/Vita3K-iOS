@@ -211,20 +211,16 @@ struct SettingsView: View {
 
     private var jitMemorySection: some View {
         Section {
-            numericField("JIT threads", text: $model.jitThreadsText)
-            numericField("JIT RAM per thread (MB)", text: $model.jitCacheText)
+            LabeledContent("JIT allocation", value: "Automatic")
             numericField("Emulated RAM budget (MB)", text: $model.emulatorRAMText)
             if !model.canSave {
-                Text("Use whole numbers: JIT threads 1–64, JIT RAM 16–128 MB, emulated RAM 512–2048 MB.")
+                Text("Use a whole number from 512 to 2048 MB for emulated RAM.")
                     .foregroundStyle(.red)
-            }
-            if let total = model.maxJITCacheMB {
-                LabeledContent("Maximum JIT cache", value: "\(total) MB")
             }
         } header: {
             Text("JIT & Memory")
         } footer: {
-            Text("Guest threads share these JIT execution slots. 1 × 128 MB uses one reusable JIT cache; it may run slower than several slots. Defaults: 37 slots × 16 MB; emulated RAM 640 MB. RAM is a guest allocation budget, not a limit on the whole app: GPU resources and iOS overhead are additional. 1 MB = 1,048,576 bytes. Restart the app after changes.")
+            Text("JIT workers are selected for this device and shared by guest threads. Translation caches are created on demand and reused within a 32–64 MB code budget. Emulated RAM is a separate guest allocation budget; graphics and iOS use additional memory. Restart the app after changing emulated RAM.")
         }
     }
 

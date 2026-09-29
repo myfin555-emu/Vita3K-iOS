@@ -20,6 +20,7 @@
 #include <features/state.h>
 #include <renderer/commands.h>
 #include <renderer/frame_host.h>
+#include <renderer/shader_cache_namespace.h>
 #include <renderer/types.h>
 #include <threads/queue.h>
 
@@ -249,6 +250,14 @@ struct State {
     void set_app(const char *title_id, const char *self_name) {
         shaders_path = cache_path / "shaders" / title_id / self_name;
         shaders_log_path = log_path / "shaderlog" / title_id / self_name;
+#ifdef VITA3K_PLATFORM_IOS
+        // Key ALL artifacts, including orphan SPIR-V left after a forced quit,
+        // by the effective renderer mode. The hashes inventory may not exist
+        // yet, so validating it alone cannot prevent cross-mode reuse.
+        const auto cache_namespace = ios_shader_cache_namespace(get_features_mask());
+        shaders_path /= cache_namespace;
+        shaders_log_path /= cache_namespace;
+#endif
     }
 };
 } // namespace renderer

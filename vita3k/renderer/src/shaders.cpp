@@ -40,15 +40,15 @@ bool get_shaders_cache_hashs(State &renderer) {
 
     renderer.shaders_cache_hashs.clear();
     // Read size of hashes list
-    size_t size;
+    size_t size = 0;
     shaders_hashs.read((char *)&size, sizeof(size));
 
     // Check version of cache
-    uint32_t versionInFile;
+    uint32_t versionInFile = 0;
     shaders_hashs.read((char *)&versionInFile, sizeof(uint32_t));
-    uint32_t features_mask;
+    uint32_t features_mask = 0;
     shaders_hashs.read((char *)&features_mask, sizeof(uint32_t));
-    if (versionInFile != shader::CURRENT_VERSION || features_mask != renderer.get_features_mask()) {
+    if (!shaders_hashs || versionInFile != shader::CURRENT_VERSION || features_mask != renderer.get_features_mask()) {
         shaders_hashs.close();
         fs::remove_all(renderer.shaders_path);
         fs::remove_all(renderer.shaders_log_path);

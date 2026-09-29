@@ -124,7 +124,7 @@ LiveContainer users must enable **Use LiveContainer's Bundle ID** in its setting
 For conventional JIT, readiness requires a successful RWX allocation and
 RX → RW → RX transitions. The app permits debugger detachment after permission
 is granted. The iOS 26 universal path requires a traced process while all
-the configured number of cache regions are prepared (37 by default), then sends
+the automatically selected pool of 2–4 cache regions is prepared, then sends
 the universal detach request.
 The pool is reused across games; exhaustion without an attached script fails
 allocation rather than issuing an unhandled breakpoint. Restarting the app
@@ -240,30 +240,46 @@ Settings now expose these core options globally and per game:
 - Audio volume (0–100%) and texture upload reuse. Disabling Texture cache
   forces Vulkan texture uploads even when the texture hash is unchanged.
 
-### JIT threads and memory
+### Automatic JIT and memory
 
-Global settings accept whole numbers and require a full app restart:
+JIT worker count and cache size are no longer editable in the iOS settings.
+At process startup, the pool selects 2–4 shared execution slots using half the
+reported host cores (clamped to 2–4) and launch memory headroom. Each slot has a
+16 MiB code cache, for a 32–64 MiB ceiling instead of the former 592 MiB default.
+Old manual JIT values are ignored and migrated to the selected values in memory.
+Translations/engines are created on demand, and guest threads share them across
+syscalls and bounded execution slices. This does not remove guest threads or
+change guest clock speed. Universal JIT still prepares the bounded executable
+regions before debugger detach; it cannot allocate arbitrary regions afterward.
 
-| Setting | Range | Default | Config key |
-| --- | --- | --- | --- |
-| JIT threads | 1–64 | 37 | `ios-jit-threads` |
-| JIT RAM per thread (MB) | 16–128 | 16 | `ios-jit-cache-mb` |
-| Emulated RAM budget (MB) | 512–2048 | 640 | `ios-emulator-ram-mb` |
+Emulated RAM remains a separate editable guest budget (512–2048 MiB, default
+640 MiB), applied after a full app restart. Graphics, JIT metadata and iOS use
+additional memory; the code-cache ceiling is not an application RSS ceiling.
+Reducing duplicate JIT caches is expected to reduce memory demand, but device
+measurements are required to quantify FPS, heat and battery effects.
 
-The supplied Attack on Titan log ends with **37 live guest threads** (1 running,
-36 waiting). Its 191 cache-allocation events are cumulative, covering 190 guest
-IDs; every recorded allocation is 16 MB. These observations determine the
-37 × 16 defaults, not a claim of 37 simultaneously executing host cores. The
-CPU core selector has been removed; existing optimization preferences persist.
+### Touch input and shader cache modes
 
-Guest threads now share a bounded pool of reusable Dynarmic engines. Each guest
-keeps its own ARM/VFP registers and CP15 state. A slot is released at a syscall
-or after a bounded instruction slice, before dispatching any blocking HLE work.
-Cache invalidation reaches every slot. Thus **1 × 128 MB** permits one engine
-and one 128 MB executable cache, without removing guest threads. It can reduce
-parallelism; increasing either field does not guarantee better performance.
-Conventional JIT allocates used slots lazily; universal JIT prewarms the selected
-number before debugger detach. Increasing the pool/cache can exceed device RAM.
+The UIKit virtual pad publishes a mutex-protected current-state snapshot. Guest
+controller reads use this for the virtual pad without waiting for SDL's next
+virtual-joystick update; physical pads still use SDL. Mapping, digital/analog
+mode and input interception retain their existing semantics. Pause/detach resets
+the snapshot. This removes one input delay boundary, not game/render latency.
+
+iOS shader and pipeline artifacts now live in a directory keyed by the effective
+renderer feature mask. This prevents reuse across High Accuracy modes even if
+the hash inventory was never saved (for example, force-quitting the app).
+Legacy caches are ignored; no save data is removed. Changing High Accuracy still
+requires restarting the game. Shader compiler concurrency is capped at two on
+iOS to reduce CPU contention; cold compilation can take longer.
+
+`iOS gameplay` logs report FPS, frame duration, available process memory and JIT
+budget every 30 seconds throughout the session. Capture the log before reopening
+the app. The f0907a2 device log supplied with the performance report contains
+startup only, so there is no device profile establishing the long-session
+bottleneck. Stable 30 FPS, flickering menus, missing effects and Metal helper
+compiler failures still require device validation; these changes do not claim
+to fix every rendering issue.
 
 MB means 1,048,576 bytes. The 640 MB guest allocation budget uses the requested
 512 + 128 total. It limits committed guest allocations separately from JIT,
