@@ -68,3 +68,34 @@ exercise the SwiftUI HUD, or prove rendering/FPS on iPhone. Run Gravity Rush
 from the opening through gameplay and compare God Eater's 2D menu open/closed
 on the same device/settings. Capture fresh logs and screenshots for each title.
 The ordinary portable suite remains `cmake -S ios/tests -B build-native-tests`.
+
+## Readback lifetime and upload memory regressions
+
+`renderer_lifetime_tests` compiles the production surface retirement, readback
+queue, wait worker and frame reuse functions with controlled GPU fences. It
+checks that extent/format changes discard old staging/blit/conversion resources,
+CPU readback precedes notifications and frame fence reset, finish callbacks
+wait for GPU completion, and queue cancellation releases waits without allowing
+a delayed CPU copy to access a recycled surface. Only the driver/state boundary
+is replaced; the lifecycle functions run unchanged (the local device variable
+uses the fake driver type). The baseline surface retirement reproducer is:
+
+```sh
+python3 ios/tests/vulkan/RendererLifetimeTests.py /usr/bin/g++ \
+  external/VulkanMemoryAllocator-Hpp/Vulkan-Headers/include --baseline
+```
+
+`--baseline` reads HEAD, so use it before committing the fix or against the old
+revision. The vertex test writes into sentinel-guarded destination spans and
+checks exact overlapping payload/tail bytes. `frame_descriptor_tests` verifies
+that recently used packs remain live, idle excess packs retire after 120 frames,
+and one warm pack remains. Texture pools are now local to a frame slot; its
+immutable binding cache is cleared only after GPU/CPU completion. To additionally compile the real `vkutil/src/objects.cpp` mapped upload
+implementation, initialize `external/spdlog` and configure with
+`-DVITA3K_COMPILE_UPLOAD_OBJECTS=ON`. This opt-in check runs locally for both
+header versions; the lightweight CI workflow fetches only its existing header
+dependencies. The native IPA build compiles the implementation normally.
+
+These tests establish correctness and operation-count changes, not device FPS
+or process RAM measurements. In particular, shader compression was already
+enabled in the iOS MoltenVK configuration and is not newly added here.

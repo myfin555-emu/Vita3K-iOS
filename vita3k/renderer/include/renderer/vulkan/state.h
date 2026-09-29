@@ -107,8 +107,8 @@ struct VKState : public renderer::State {
     // start at 1 because last_frame_waited is set to 0
     int current_frame_idx = 1;
 
-    // vector of descriptor pools used for the frame descriptor, they are not really used anywhere
-    // but it's better to keep a reference to them somewhere
+    // Color-attachment descriptor pools shared across frame slots.
+    // Texture descriptor pools are owned/reclaimed by each FrameDescriptor.
     std::deque<vk::DescriptorPool> frame_descriptor_pools;
 
     // only used when memory mapping is enabled

@@ -101,9 +101,6 @@ void mid_scene_flush(VKContext &context, const SceGxmNotification notification) 
     }
 }
 
-// when needed, how many descriptor of the given size we allocate for each frame at once
-static constexpr uint32_t DESCRIPTOR_PACK_SIZE = 64;
-
 static vk::DescriptorSet retrieve_descriptor(VKContext &context, bool is_vertex, uint16_t textures_count) {
     if (textures_count == 0)
         return context.empty_set;
@@ -116,35 +113,27 @@ static vk::DescriptorSet retrieve_descriptor(VKContext &context, bool is_vertex,
     // we have no more frame descriptor available, create a bunch of new one for this specific layout
     vk::DescriptorPoolSize pool_size{
         .type = vk::DescriptorType::eCombinedImageSampler,
-        .descriptorCount = textures_count * DESCRIPTOR_PACK_SIZE * MAX_FRAMES_RENDERING
+        .descriptorCount = textures_count * TEXTURE_DESCRIPTOR_PACK_SIZE
     };
 
     vk::DescriptorPoolCreateInfo descriptor_pool_info{
-        .maxSets = DESCRIPTOR_PACK_SIZE * MAX_FRAMES_RENDERING
+        .maxSets = TEXTURE_DESCRIPTOR_PACK_SIZE
     };
     descriptor_pool_info.setPoolSizes(pool_size);
 
     vk::DescriptorPool descriptor_pool = state.device.createDescriptorPool(descriptor_pool_info);
-    state.frame_descriptor_pools.push_back(descriptor_pool);
+    frame_descriptor.pools.push_back({ descriptor_pool, state.frame().frame_timestamp });
 
     // allocate all the descriptor sets
     const vk::DescriptorSetLayout set_layout = is_vertex ? state.pipeline_cache.vertex_textures_layout[textures_count] : state.pipeline_cache.fragment_textures_layout[textures_count];
-    std::vector<vk::DescriptorSetLayout> layouts(DESCRIPTOR_PACK_SIZE * MAX_FRAMES_RENDERING, set_layout);
+    std::vector<vk::DescriptorSetLayout> layouts(TEXTURE_DESCRIPTOR_PACK_SIZE, set_layout);
     vk::DescriptorSetAllocateInfo descr_set_info{
         .descriptorPool = descriptor_pool
     };
     descr_set_info.setSetLayouts(layouts);
     auto descriptor_sets = state.device.allocateDescriptorSets(descr_set_info);
 
-    // distribute them among all frames
-    for (int frame_idx = 0; frame_idx < MAX_FRAMES_RENDERING; frame_idx++) {
-        FrameObject &frame_object = state.frames[frame_idx];
-        FrameDescriptor &frame_descr = is_vertex ? frame_object.vert_descriptors[textures_count - 1] : frame_object.frag_descriptors[textures_count - 1];
-
-        // insert DESCRIPTOR_PACK_SIZE in each frame descriptor
-        auto descr_it = descriptor_sets.begin() + frame_idx * DESCRIPTOR_PACK_SIZE;
-        frame_descr.sets.insert(frame_descr.sets.end(), descr_it, descr_it + DESCRIPTOR_PACK_SIZE);
-    }
+    frame_descriptor.sets.insert(frame_descriptor.sets.end(), descriptor_sets.begin(), descriptor_sets.end());
 
     return frame_descriptor.sets[frame_descriptor.descriptors_idx++];
 }
@@ -271,12 +260,16 @@ static void bind_vertex_streams(VKContext &context, MemState &mem, uint32_t inst
 #ifdef __APPLE__
     // Reuse exactly the formats/offsets selected for this pipeline, including
     // raw register inputs and RGB formats expanded to RGBA by the backend.
-    const auto vertex_input = context.state.pipeline_cache.get_vertex_input_state(vertex_program, mem);
-    std::array<uint32_t, SCE_GXM_MAX_VERTEX_STREAMS> host_strides{};
-    for (uint32_t i = 0; i < vertex_input.vertexBindingDescriptionCount; ++i) {
-        const auto &binding = vertex_input.pVertexBindingDescriptions[i];
-        host_strides[binding.binding] = binding.stride;
+    auto &program = *vertex_program.renderer_data;
+    if (!program.vertex_upload_strides_ready) {
+        const auto vertex_input = context.state.pipeline_cache.get_vertex_input_state(vertex_program, mem);
+        for (uint32_t i = 0; i < vertex_input.vertexBindingDescriptionCount; ++i) {
+            const auto &binding = vertex_input.pVertexBindingDescriptions[i];
+            program.vertex_upload_strides[binding.binding] = binding.stride;
+        }
+        program.vertex_upload_strides_ready = true;
     }
+    const auto &host_strides = program.vertex_upload_strides;
 #endif
 
     for (int i = 0; i < max_stream_idx; i++) {
@@ -290,15 +283,18 @@ static void bind_vertex_streams(VKContext &context, MemState &mem, uint32_t inst
                 const uint8_t *stream = state.vertex_streams[i].data.get(mem);
                 uint32_t stream_size = state.vertex_streams[i].size;
 #ifdef __APPLE__
-                std::vector<uint8_t> repacked;
                 const uint32_t guest_stride = vertex_program.streams[i].stride;
                 if (host_strides[i] && host_strides[i] != guest_stride) {
-                    repacked = repack_vertex_stream(stream, stream_size, guest_stride, host_strides[i]);
-                    stream = repacked.data();
-                    stream_size = static_cast<uint32_t>(repacked.size());
-                }
+                    const uint32_t upload_size = repacked_vertex_stream_size(stream_size, guest_stride, host_strides[i]);
+                    auto &buffer = context.vertex_stream_ring_buffer;
+                    buffer.allocate(upload_size);
+                    repack_vertex_stream({ buffer.mapped_data(), upload_size }, stream, stream_size, guest_stride, host_strides[i]);
+                    buffer.flush(upload_size);
+                } else
 #endif
-                context.vertex_stream_ring_buffer.allocate(context.prerender_cmd, stream_size, stream);
+                {
+                    context.vertex_stream_ring_buffer.allocate(context.prerender_cmd, stream_size, stream);
+                }
                 context.vertex_stream_offsets[i] = context.vertex_stream_ring_buffer.data_offset;
             }
 

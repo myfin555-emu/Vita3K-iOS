@@ -114,7 +114,26 @@ void VKSurfaceCache::destroy_framebuffers(vk::ImageView view) {
 }
 
 void VKSurfaceCache::destroy_surface(ColorSurfaceCacheInfo &info) {
+    if (info.pending_readback) {
+        info.pending_readback->wait([&] { return state.request_queue.is_aborted(); });
+        info.pending_readback.reset();
+    }
     vkutil::DestroyQueue &destroy_queue = state.frame().destroy_queue;
+
+    // These allocations encode the old extent/format too. Keeping them when
+    // the LRU entry is recycled can copy a larger image into a smaller buffer.
+    if (info.blit_image) {
+        destroy_queue.add_image(*info.blit_image);
+        info.blit_image.reset();
+    }
+    if (info.copy_buffer) {
+        destroy_queue.add_buffer(*info.copy_buffer);
+        info.copy_buffer.reset();
+    }
+    sws_freeContext(info.sws_context);
+    info.sws_context = nullptr;
+    info.need_post_surface_sync = false;
+    info.need_buffer_sync = false;
 
     // don't forget to destroy in the right order
     for (auto &casted : info.casted_textures) {
@@ -1287,7 +1306,7 @@ bool VKSurfaceCache::check_for_surface(MemState &mem, Address source_address, Ca
         state.request_queue.push(CallbackRequest{ new CallbackRequestFunction(std::move(vk_callback)) });
 
         if (returned_info)
-            state.request_queue.push(PostSurfaceSyncRequest{ returned_info });
+            queue_post_surface_sync(returned_info);
     }
 
     // now push the callback
@@ -1306,6 +1325,13 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
 
     if (last_written_surface == nullptr || !*last_written_surface->need_surface_sync)
         return nullptr;
+
+    // A previous scene can still be copying these bytes on the wait thread.
+    // Wait only for this surface, leaving unrelated surfaces/GPU work queued.
+    if (last_written_surface->pending_readback) {
+        last_written_surface->pending_readback->wait([&] { return state.request_queue.is_aborted(); });
+        last_written_surface->pending_readback.reset();
+    }
 
     VKContext *context = reinterpret_cast<VKContext *>(state.context);
     vk::CommandBuffer cmd_buffer = context->render_cmd;
@@ -1471,6 +1497,14 @@ static void swizzle_text_T(T *pixels, uint32_t nb_pixel, ColorSurfaceCacheInfo *
             break;
         }
     }
+}
+
+void VKSurfaceCache::queue_post_surface_sync(ColorSurfaceCacheInfo *surface) {
+    if (surface->pending_readback)
+        surface->pending_readback->wait([&] { return state.request_queue.is_aborted(); });
+    auto completion = std::make_shared<SurfaceReadback>();
+    surface->pending_readback = completion;
+    state.request_queue.push(PostSurfaceSyncRequest{ surface, std::move(completion) });
 }
 
 void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurfaceCacheInfo *surface) {

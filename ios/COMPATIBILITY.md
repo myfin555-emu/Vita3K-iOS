@@ -524,3 +524,27 @@ The regression suites check actual GXP-to-SPIR-V/MSL translation and exact
 repacked bytes. These establish the code defects and the corrected paths; a new
 iPhone capture is still needed to establish which remaining game glitches they
 resolve. Native Metal shader execution and gameplay FPS are not measured here.
+
+### Sustained rendering and readback lifetime
+
+The renderer now repacks overlapping Metal vertex records directly into the
+mapped upload buffer, eliminating a temporary allocation and a second complete
+copy. Immutable host strides are computed once per vertex program. Typed/raw
+input interpretation and shader cache version 18 remain as in the raw-input fix.
+
+Unmapped surface readbacks now participate in frame completion and guest
+notification ordering. Reusing a staging allocation or recycling its surface
+waits for its CPU copy; old staging, downscale images and RGB conversion contexts
+are retired when the surface extent/format changes. Shutdown cancels abandoned
+copies without allowing them to access recycled surfaces. `finish` also drains
+unmapped work. This fixes lifetime/order defects; it does not disable readback,
+skip game draws, reduce texture resolution or claim every black surface has the
+same cause.
+
+Texture descriptor pools are allocated per frame slot and excess unused packs
+are released after 120 frames once that slot is complete. One pack stays warm.
+MoltenVK MSL compression was already enabled. Compiled pipelines, texture cache
+and guest memory remain separate consumers; there is no claim of a fixed total
+RAM cap or measured FPS gain. Device acceptance still requires Gravity Rush
+opening/gameplay and God Eater gameplay/2D-menu comparisons on the same hardware,
+settings and warm caches, including repeated scene/menu transitions and shutdown.

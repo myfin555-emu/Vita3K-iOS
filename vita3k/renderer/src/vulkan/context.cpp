@@ -108,7 +108,9 @@ void VKContext::wait_thread_function(const MemState &mem) {
                        [&](PostSurfaceSyncRequest &request) {
                            wait_for_fences();
 
-                           state.surface_cache.perform_post_surface_sync(mem, request.cache_info);
+                           request.completion->complete([&] {
+                               state.surface_cache.perform_post_surface_sync(mem, request.cache_info);
+                           });
                        },
                        [&](SyncSignalRequest &request) {
                            wait_for_fences();
@@ -116,6 +118,7 @@ void VKContext::wait_thread_function(const MemState &mem) {
                            renderer::subject_done(request.sync, request.timestamp);
                        },
                        [&](CallbackRequest &request) {
+                           wait_for_fences();
                            if (request.callback) {
                                (*request.callback)();
                                delete request.callback;
@@ -502,7 +505,7 @@ void VKContext::stop_recording(const SceGxmNotification &notif1, const SceGxmNot
         }
 
         if (surface_info && surface_info->need_post_surface_sync) {
-            state.request_queue.push(PostSurfaceSyncRequest{ surface_info });
+            state.surface_cache.queue_post_surface_sync(surface_info);
         }
 
         if (notif1.address || notif2.address) {
@@ -512,13 +515,14 @@ void VKContext::stop_recording(const SceGxmNotification &notif1, const SceGxmNot
             };
             state.request_queue.push(request);
         }
-    } else if (state.features.support_unmapped_surface_sync
-        && surface_info && surface_info->need_post_surface_sync) {
-        // Unmapped sync: wait for this scene's GPU copy into the staging
-        // buffer, then CPU-copy it into guest RAM. Notifications keep their
-        // non-mapped handling elsewhere.
+    } else if (state.features.support_unmapped_surface_sync) {
+        // Track every submitted fence, including scenes without readback,
+        // before the frame slot can reset fences and recycle GPU resources.
         state.request_queue.push(FenceWaitRequest{ fence });
-        state.request_queue.push(PostSurfaceSyncRequest{ surface_info });
+        if (surface_info && surface_info->need_post_surface_sync)
+            state.surface_cache.queue_post_surface_sync(surface_info);
+        if (notif1.address || notif2.address)
+            state.request_queue.push(NotificationRequest{ { notif1, notif2 } });
     }
 }
 
@@ -559,7 +563,9 @@ void VKContext::check_for_macroblock_change(bool is_draw) {
 }
 
 void new_frame(VKContext &context) {
-    if (context.state.features.enable_memory_mapping) {
+    const bool uses_wait_thread = context.state.features.enable_memory_mapping
+        || context.state.features.support_unmapped_surface_sync;
+    if (uses_wait_thread) {
         FrameDoneRequest request = { context.frame_timestamp };
         context.state.request_queue.push(request);
 
@@ -579,16 +585,18 @@ void new_frame(VKContext &context) {
     if (!frame.rendered_fences.empty()) {
         // wait for the fences, then reset them
 
-        if (context.state.features.enable_memory_mapping) {
+        if (uses_wait_thread) {
             // this will underflow for the first MAX_FRAMES_RENDERING frames
             // but that's not an issue as frame.rendered_fences will be empty
             uint64_t previous_frame_timestamp = context.frame_timestamp - MAX_FRAMES_RENDERING;
 
             // the wait is done by the wait thread
             std::unique_lock<std::mutex> lock(context.new_frame_mutex);
-            context.new_frame_condv.wait(lock, [&]() {
-                return context.last_frame_waited >= previous_frame_timestamp;
-            });
+            while (context.last_frame_waited < previous_frame_timestamp) {
+                if (context.state.request_queue.is_aborted())
+                    return; // shutdown: do not reset fences still owned by the worker
+                context.new_frame_condv.wait_for(lock, std::chrono::milliseconds(10));
+            }
         } else {
             auto result = device.waitForFences(frame.rendered_fences, VK_TRUE, std::numeric_limits<uint64_t>::max());
             if (result != vk::Result::eSuccess) {
@@ -622,13 +630,13 @@ void new_frame(VKContext &context) {
     device.resetCommandPool(frame.prerender_pool);
     device.resetCommandPool(frame.render_pool);
 
-    // set the position in the used descriptor queue back to the beginning
+    frame.texture_descriptors.clear();
+    const auto destroy_pool = [&](vk::DescriptorPool pool) { device.destroy(pool); };
     for (int i = 0; i < 16; i++) {
-        frame.vert_descriptors[i].descriptors_idx = 0;
-        frame.frag_descriptors[i].descriptors_idx = 0;
+        frame.vert_descriptors[i].reset(context.frame_timestamp, destroy_pool);
+        frame.frag_descriptors[i].reset(context.frame_timestamp, destroy_pool);
     }
     frame.color_descriptor.descriptors_idx = 0;
-    frame.texture_descriptors.clear();
 
     // deferred destruction of the objects
     frame.destroy_queue.destroy_objects();
@@ -643,7 +651,7 @@ void new_frame(VKContext &context) {
 }
 
 void signal_sync_object(VKState &state, SceGxmSyncObject *sync_object, uint32_t timestamp) {
-    assert(state.features.enable_memory_mapping);
+    assert(state.features.can_surface_sync());
 
     SyncSignalRequest request{
         .sync = sync_object,

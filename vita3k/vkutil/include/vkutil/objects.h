@@ -148,6 +148,9 @@ public:
     explicit HostRingBuffer(vk::BufferUsageFlags usage, const size_t capacity)
         : RingBuffer(usage, capacity) {
     }
+    // Access only the range reserved by allocate(), then flush after writing.
+    uint8_t *mapped_data() const { return static_cast<uint8_t *>(buffer.mapped_data) + data_offset; }
+    void flush(uint32_t size, uint32_t offset = 0);
     void create() override;
 
     void copy(vk::CommandBuffer cmd_buffer, const uint32_t size, const void *data, const uint32_t offset = 0) override;

@@ -65,7 +65,7 @@ struct VKSurfaceCache {
 source += function('static bool format_need_additional_memory(')
 source += function('static bool format_support_swizzle(')
 start = surface.index('template <typename T>\nstatic void swizzle_text_T_2')
-end = surface.index('void VKSurfaceCache::perform_post_surface_sync', start)
+end = surface.index('void VKSurfaceCache::queue_post_surface_sync', start)
 source += surface[start:end]
 source += function('void VKSurfaceCache::perform_post_surface_sync(')
 scene = (repo / 'vita3k/renderer/src/vulkan/scene.cpp').read_text()

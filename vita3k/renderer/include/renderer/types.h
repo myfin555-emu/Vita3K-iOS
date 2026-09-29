@@ -193,6 +193,11 @@ struct FragmentProgram : ShaderProgram {
 
 struct VertexProgram : ShaderProgram {
     shader::usse::AttributeInformationMap attribute_infos;
+#ifdef __APPLE__
+    // Initialized once by the render thread; the program's vertex layout is immutable.
+    std::array<uint32_t, SCE_GXM_MAX_VERTEX_STREAMS> vertex_upload_strides{};
+    bool vertex_upload_strides_ready = false;
+#endif
 };
 
 struct ShadersHash {

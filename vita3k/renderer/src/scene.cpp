@@ -98,9 +98,9 @@ COMMAND(handle_sync_surface_data) {
 
     const SceGxmNotification vertex_notification = helper.pop<SceGxmNotification>();
     const SceGxmNotification fragment_notification = helper.pop<SceGxmNotification>();
-    // with memory mapping, notifications are signaled another way
+    // Vulkan surface readbacks signal notifications after the CPU copy.
     // also don't try to signal if there are no notifications
-    bool were_notifications_signaled = renderer.features.enable_memory_mapping
+    bool were_notifications_signaled = renderer.features.can_surface_sync()
         || (!vertex_notification.address && !fragment_notification.address);
 
     auto signal_notifications = [&]() {

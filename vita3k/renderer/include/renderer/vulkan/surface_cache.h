@@ -24,6 +24,7 @@
 #include <vkutil/objects.h>
 
 #include <optional>
+#include <renderer/vulkan/surface_readback.h>
 
 struct SwsContext;
 
@@ -117,6 +118,9 @@ struct ColorSurfaceCacheInfo : public SurfaceCacheInfo {
 
     // do we need some CPU convert/unswizzling part for surface sync
     bool need_post_surface_sync = false;
+
+    // CPU readback must finish before this entry or its staging buffer is reused.
+    std::shared_ptr<SurfaceReadback> pending_readback;
 
     // only for double buffer, do we need to sync the two views?
     bool need_buffer_sync = false;
@@ -235,6 +239,7 @@ public:
     ColorSurfaceCacheInfo *perform_surface_sync();
 
     // Called after the render has been done
+    void queue_post_surface_sync(ColorSurfaceCacheInfo *surface);
     void perform_post_surface_sync(const MemState &mem, ColorSurfaceCacheInfo *surface);
 
     // destroy all framebuffers associated with render_target

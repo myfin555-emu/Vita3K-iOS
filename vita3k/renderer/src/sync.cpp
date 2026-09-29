@@ -45,7 +45,7 @@ COMMAND(handle_signal_sync_object) {
     SceGxmSyncObject *sync = helper.pop<Ptr<SceGxmSyncObject>>().get(mem);
     const uint32_t timestamp = helper.pop<uint32_t>();
 
-    if (features.enable_memory_mapping && config.current_config.high_accuracy) {
+    if (features.can_surface_sync() && config.current_config.high_accuracy) {
         assert(renderer.current_backend == renderer::Backend::Vulkan);
         vulkan::signal_sync_object(dynamic_cast<vulkan::VKState &>(renderer), sync, timestamp);
     } else {
@@ -125,7 +125,8 @@ void finish(State &state, Context *context) {
 
     // Wait for the VK wait thread to finish processing all pending requests.
     // Push a callback request on the queue and wait for it to be treated
-    if (state.current_backend == Backend::Vulkan && state.features.enable_memory_mapping) {
+    if (state.current_backend == Backend::Vulkan
+        && (state.features.enable_memory_mapping || state.features.support_unmapped_surface_sync)) {
         auto &vk_state = static_cast<vulkan::VKState &>(state);
         std::promise<void> promise;
         auto callback = [&]() {

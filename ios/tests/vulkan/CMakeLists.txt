@@ -13,7 +13,9 @@ target_include_directories(vulkan_test_headers INTERFACE
 
 # Each header must configure Vulkan-Hpp correctly when it is the first include.
 # Do not supply VULKAN_HPP_* definitions here: doing so masked an iOS build failure.
-foreach(header IN ITEMS renderer/vulkan/render_pass_dependencies.h
+foreach(header IN ITEMS renderer/vulkan/surface_readback.h
+                        renderer/vulkan/frame_descriptor.h
+                        renderer/vulkan/render_pass_dependencies.h
                         renderer/vulkan/texture_descriptor_cache.h
                         renderer/vulkan/vertex_stream.h vkutil/vkutil.h)
     string(MAKE_C_IDENTIFIER "${header}" target)
@@ -28,6 +30,10 @@ foreach(header IN ITEMS renderer/vulkan/render_pass_dependencies.h
         ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/include
         ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include)
 endforeach()
+
+add_executable(frame_descriptor_tests FrameDescriptorTests.cpp)
+target_link_libraries(frame_descriptor_tests PRIVATE vulkan_test_headers)
+add_test(NAME frame_descriptor_tests COMMAND frame_descriptor_tests)
 
 add_executable(vertex_stream_tests VertexStreamTests.cpp)
 target_link_libraries(vertex_stream_tests PRIVATE vulkan_test_headers)
@@ -58,3 +64,26 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME surface_cache_production_tests COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceCacheProductionTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
 set_tests_properties(vulkan_surface_tests surface_cache_production_tests PROPERTIES TIMEOUT 60)
+
+add_test(NAME renderer_lifetime_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/RendererLifetimeTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
+set_tests_properties(renderer_lifetime_tests PROPERTIES TIMEOUT 60)
+
+# The lightweight header workflow does not fetch spdlog. Enable this extra
+# implementation check when the full pinned logging dependencies are present.
+option(VITA3K_COMPILE_UPLOAD_OBJECTS "Compile the full Vulkan upload implementation" OFF)
+if(VITA3K_COMPILE_UPLOAD_OBJECTS)
+    if(NOT EXISTS "${REPO_ROOT}/external/spdlog/include/spdlog/spdlog.h")
+        message(FATAL_ERROR "Initialize external/spdlog for VITA3K_COMPILE_UPLOAD_OBJECTS")
+    endif()
+    add_library(vulkan_upload_objects OBJECT ${REPO_ROOT}/vita3k/vkutil/src/objects.cpp)
+    target_link_libraries(vulkan_upload_objects PRIVATE vulkan_test_headers)
+    target_compile_definitions(vulkan_upload_objects PRIVATE SPDLOG_FMT_EXTERNAL)
+    target_include_directories(vulkan_upload_objects PRIVATE
+        ${REPO_ROOT}/vita3k/util/include
+        ${REPO_ROOT}/external/boost
+        ${REPO_ROOT}/external/fmt/include
+        ${REPO_ROOT}/external/spdlog/include
+        ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/include
+        ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include)
+endif()

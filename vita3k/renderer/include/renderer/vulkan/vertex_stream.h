@@ -22,7 +22,6 @@
 #include <limits>
 #include <span>
 #include <stdexcept>
-#include <vector>
 #include <vkutil/vulkan.h>
 #include <vulkan/vulkan_format_traits.hpp>
 
@@ -46,23 +45,33 @@ inline uint32_t metal_vertex_stride(uint32_t guest_stride, uint32_t binding,
     return static_cast<uint32_t>(extent);
 }
 
-inline std::vector<uint8_t> repack_vertex_stream(const uint8_t *source, uint32_t size,
-    uint32_t guest_stride, uint32_t host_stride) {
+inline uint32_t repacked_vertex_stream_size(uint32_t size, uint32_t guest_stride, uint32_t host_stride) {
     if (!size || !guest_stride)
-        return {};
+        return 0;
     const uint64_t count = (uint64_t(size) + guest_stride - 1) / guest_stride;
     const uint64_t output_size = count * host_stride;
     if (output_size > std::numeric_limits<uint32_t>::max())
         throw std::length_error("Metal vertex stream overflow");
-    std::vector<uint8_t> result(static_cast<size_t>(output_size), 0);
+    return static_cast<uint32_t>(output_size);
+}
+
+// Write straight into the mapped upload allocation: no temporary allocation
+// or second full-stream copy. Missing tail bytes still have defined contents.
+inline void repack_vertex_stream(std::span<uint8_t> destination, const uint8_t *source,
+    uint32_t size, uint32_t guest_stride, uint32_t host_stride) {
+    const uint32_t output_size = repacked_vertex_stream_size(size, guest_stride, host_stride);
+    if (destination.size() < output_size)
+        throw std::length_error("Metal vertex destination too small");
+    if (!output_size)
+        return;
+    const uint64_t count = output_size / host_stride;
     for (uint64_t i = 0; i < count; ++i) {
         const uint64_t offset = i * guest_stride;
-        // The last uploaded record can end mid-stride. Copy overlapping bytes
-        // only when present and zero the remainder; never read past the upload.
         const size_t bytes = std::min<uint64_t>(host_stride, size - offset);
-        std::memcpy(result.data() + i * host_stride, source + offset, bytes);
+        auto *record = destination.data() + i * host_stride;
+        std::memcpy(record, source + offset, bytes);
+        std::memset(record + bytes, 0, host_stride - bytes);
     }
-    return result;
 }
 
 } // namespace renderer::vulkan

@@ -224,6 +224,10 @@ void HostRingBuffer::create() {
 void HostRingBuffer::copy(vk::CommandBuffer cmd_buffer, const uint32_t size, const void *data, const uint32_t offset) {
     memcpy(static_cast<uint8_t *>(buffer.mapped_data) + data_offset + offset, data, size);
 
+    flush(size, offset);
+}
+
+void HostRingBuffer::flush(uint32_t size, uint32_t offset) {
     if (!is_coherent)
         allocator.flushAllocation(buffer.allocation, data_offset + offset, size);
 }

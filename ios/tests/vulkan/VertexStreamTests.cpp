@@ -2,6 +2,7 @@
 #include <array>
 #include <iostream>
 #include <memory>
+#include <vector>
 #include <stdexcept>
 
 using namespace renderer::vulkan;
@@ -25,7 +26,11 @@ int main() {
     for (uint32_t i = 0; i < 37; ++i) source[i] = static_cast<uint8_t>(i + 1);
     for (const auto &[stride, binding] : {std::pair{12u, 0u}, {10u, 1u}, {7u, 2u}}) {
         const auto host_stride = metal_vertex_stride(stride, binding, attributes);
-        const auto packed = repack_vertex_stream(source.get(), 37, stride, host_stride);
+        const auto output_size = repacked_vertex_stream_size(37, stride, host_stride);
+        std::vector<uint8_t> storage(output_size + 2, 0xcc);
+        std::span<uint8_t> packed(storage.data() + 1, output_size);
+        repack_vertex_stream(packed, source.get(), 37, stride, host_stride);
+        require(storage.front() == 0xcc && storage.back() == 0xcc, "write outside upload allocation");
         const uint32_t count = (37 + stride - 1) / stride;
         require(packed.size() == count * host_stride, "repacked size mismatch");
         for (uint32_t vertex = 0; vertex < count; ++vertex) {
@@ -36,7 +41,12 @@ int main() {
             }
         }
     }
-    require(repack_vertex_stream(nullptr, 0, 12, 16).empty(), "empty upload changed");
-    require(repack_vertex_stream(source.get(), 37, 0, 0).empty(), "constant upload repacked");
+    require(repacked_vertex_stream_size(0, 12, 16) == 0, "empty upload changed");
+    require(repacked_vertex_stream_size(37, 0, 0) == 0, "constant upload repacked");
+    bool rejected = false;
+    std::array<uint8_t, 2> small{};
+    try { repack_vertex_stream(small, source.get(), 37, 12, 16); }
+    catch (const std::length_error &) { rejected = true; }
+    require(rejected && small[0] == 0 && small[1] == 0, "short destination was modified");
     std::cout << "Metal vertex stride, overlapping loads and short upload tails passed\n";
 }

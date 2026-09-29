@@ -1068,7 +1068,10 @@ void VKState::late_init(const Config &cfg, const std::string_view game_id, MemSt
 }
 
 void VKState::cleanup() {
-    const auto release_descriptor_sets = [](FrameDescriptor &descriptor) {
+    const auto release_descriptor_sets = [&](FrameDescriptor &descriptor) {
+        for (const auto &pool : descriptor.pools)
+            device.destroy(pool.handle);
+        descriptor.pools.clear();
         std::vector<vk::DescriptorSet>().swap(descriptor.sets);
         descriptor.descriptors_idx = 0;
     };

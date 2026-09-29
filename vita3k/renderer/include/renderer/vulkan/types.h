@@ -19,6 +19,7 @@
 
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
+#include <renderer/vulkan/frame_descriptor.h>
 #include <renderer/vulkan/frame_lifetime.h>
 #include <renderer/vulkan/texture_descriptor_cache.h>
 #include <shader/uniform_block.h>
@@ -83,11 +84,6 @@ struct VKTextureCache : public TextureCache {
 
     void cleanup();
     void trim_staging_buffers(uint64_t frame_timestamp);
-};
-
-struct FrameDescriptor {
-    std::vector<vk::DescriptorSet> sets;
-    int descriptors_idx = 0;
 };
 
 struct FrameObject {
@@ -192,8 +188,11 @@ struct SyncSignalRequest {
 };
 struct ColorSurfaceCacheInfo;
 
+class SurfaceReadback;
+
 struct PostSurfaceSyncRequest {
     ColorSurfaceCacheInfo *cache_info;
+    std::shared_ptr<SurfaceReadback> completion;
 };
 
 using CallbackRequestFunction = std::function<void()>;
