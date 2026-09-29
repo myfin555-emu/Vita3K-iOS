@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <shader/interlock_discard.h>
 #include <shader/usse_translator.h>
 
 #include <SPIRV/SpvBuilder.h>
@@ -173,7 +174,7 @@ bool USSETranslatorVisitor::kill(
     LOG_DISASM("{:016x}: KILL {}", m_instr, disasm::s_predicate_str(pred));
 
     m_b.setDebugSourceLocation(m_recompiler.cur_pc, nullptr);
-    m_b.makeStatementTerminator(spv::OpKill, "kill");
+    emit_fragment_discard(m_b, m_spirv_params.interlock_discarded);
 
     return true;
 }

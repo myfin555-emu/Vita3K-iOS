@@ -485,11 +485,20 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
         const VkBool32 full_image_swizzle = VK_TRUE;
 #endif
         const VkBool32 resume_lost_device = VK_TRUE;
+#ifdef VITA3K_PLATFORM_IOS
+        // MSL source is retained for cache export after compilation; compress
+        // that inactive source instead of keeping every expanded shader in RAM.
+        const int32_t shader_compression = 1; // MoltenVK LZFSE
+#endif
 #ifndef NDEBUG
         const VkBool32 debug = VK_TRUE;
         const int32_t log_level = 4;
 #endif
         vk::LayerSettingEXT layer_settings[] = {
+#ifdef VITA3K_PLATFORM_IOS
+            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_SHADER_COMPRESSION_ALGORITHM", vk::LayerSettingTypeEXT::eInt32, 1,
+                &shader_compression },
+#endif
 #if !defined(VITA3K_PLATFORM_IOS)
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", vk::LayerSettingTypeEXT::eBool32, 1,
                 &full_image_swizzle },

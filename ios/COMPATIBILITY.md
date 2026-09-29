@@ -434,3 +434,34 @@ These changes do not replace High Accuracy with the previously regressed A11
 subpass path. Metal shader failures, missing effects and a stable 30 FPS target
 still require device verification and further renderer investigation. No FPS or
 whole-app RAM reduction is established by host tests alone.
+
+
+### iOS interlock discard and retained shader memory
+
+The later 900cbe7 capture again reports `air.simd_is_helper_thread` Metal
+compiler failures. MoltenVK 1.4.2 enables SPIRV-Cross's discarded-store checks
+on Apple GPUs; combining fragment discard with storage-image writes introduces
+this helper query. This identifies a shader compilation failure, not the
+complete cause of sustained low FPS.
+
+For iOS Vulkan early-test interlock color shaders, guest KILL now terminates
+the current guest phase and marks the invocation discarded. Subsequent phases
+and the final framebuffer write are skipped, while the interlock end remains
+reachable. This path has no color attachment output and already performs early
+depth/stencil tests. Mask and depth-replacement shaders keep native discard.
+Other platforms and non-interlock shaders also keep native discard.
+The host fixtures reproduce the old helper query and verify its absence in the
+replacement with MoltenVK's pinned SPIRV-Cross, including argument buffers.
+Apple Metal compilation and the affected game's visuals still require testing.
+
+Shader cache version 17 selects new SPIR-V and pipeline files automatically;
+manual cache clearing is not required. First-use compilation still takes time.
+High Accuracy's interlock mode is retained. On iOS with Vulkan layer settings,
+MoltenVK now uses LZFSE to compress retained Metal source used for pipeline-cache
+export. This targets source-string RAM, not guest RAM, textures, or executable
+shader code; the amount saved needs measurement on device.
+
+The latest supplied log predates the logging/staging/single-flight changes in
+4f8de4e. Compare a new build using the existing `iOS renderer`, `iOS gameplay`
+and `NGS update timing` summaries. Passing host shader tests does not establish
+a stable 30 FPS, eliminate thermal throttling, or confirm every effect renders.

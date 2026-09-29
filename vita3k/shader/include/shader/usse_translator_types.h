@@ -47,6 +47,8 @@ struct SamplerInfo {
 using SamplerMap = std::map<uint32_t, SamplerInfo>;
 
 struct SpirvShaderParameters {
+    spv::Id interlock_discarded = 0;
+
     // Mapped to 'pa' (primary attribute) USSE registers
     // for vertex: vertex inputs (vertex attributes)
     // for fragment: fragment inputs (linkage from vertex stage)

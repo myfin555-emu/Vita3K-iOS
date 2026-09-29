@@ -35,6 +35,8 @@ target_link_libraries(util INTERFACE fmt spdlog)
 add_subdirectory("${VITA_ROOT}/vita3k/features" features)
 add_subdirectory("${VITA_ROOT}/vita3k/gxm" gxm)
 add_subdirectory("${VITA_ROOT}/vita3k/shader" shader)
+# Exercise the iOS shader paths with the host SPIR-V/MSL tools.
+target_compile_definitions(shader PRIVATE VITA3K_PLATFORM_IOS=1)
 add_library(shader_test_paths STATIC
     "${VITA_ROOT}/external/boost/libs/filesystem/src/path.cpp"
     "${VITA_ROOT}/external/boost/libs/filesystem/src/path_traits.cpp"

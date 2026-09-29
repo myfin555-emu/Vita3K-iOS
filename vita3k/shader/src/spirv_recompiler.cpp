@@ -16,6 +16,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <shader/interlock_discard.h>
 #include <shader/spirv_recompiler.h>
 #include <shader/uniform_block.h>
 #include <shader/usse_disasm.h>
@@ -1968,6 +1969,13 @@ static SpirvCode convert_gxp_to_spirv_impl(const SceGxmProgram &program, const s
 
     // Generate parameters
     SpirvShaderParameters parameters = create_parameters(b, program, utils, features, translation_state, program_type, texture_queries);
+#ifdef VITA3K_PLATFORM_IOS
+    // The mask path has its own discard/output semantics. Leave it unchanged.
+    if (program.is_fragment() && program.is_frag_color_used()
+        && features.should_use_shader_interlock() && translation_state.is_vulkan
+        && !features.use_mask_bit && !program.is_depth_replace_used())
+        parameters.interlock_discarded = create_interlock_discard_flag(b);
+#endif
 
     if (!translation_state.is_maskupdate) {
         if (program.is_fragment()) {

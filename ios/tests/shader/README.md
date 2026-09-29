@@ -22,7 +22,10 @@ Tests cover synthetic GXP uniform layouts, USSE predicates/branches, base-2
 complex arithmetic, conditional vector moves, integer instruction repetition,
 initialized registers, signed GPU address addition and mapped byte/half/word
 loads/stores. Generated Vulkan 1.0 SPIR-V is validated with SPIRV-Tools. The GXP
-fixtures are also translated to iOS Metal source by pinned SPIRV-Cross.
+fixtures are also translated to iOS Metal source by pinned SPIRV-Cross. The
+shader target enables the iOS translation paths. Predicated and unconditional
+interlock discard fixtures verify that native discard remains available outside
+that path and that interlock shaders do not emit helper-thread queries.
 `ValidateSpirv.py` evaluates the small straight-line address fixture against
 independent native 64-bit sums; it is not a general shader or GPU emulator.
 

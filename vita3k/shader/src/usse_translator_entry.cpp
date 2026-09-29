@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <shader/interlock_discard.h>
 #include <shader/usse_translator_entry.h>
 
 #include <gxm/types.h>
@@ -1103,13 +1104,13 @@ void convert_gxp_usse_to_spirv(spv::Builder &b, const SceGxmProgram &program, co
             }
 
             recomp.reset(cur_phase_code.first, cur_phase_code.second);
-            b.createFunctionCall(recomp.compile_program_function(), {});
+            call_fragment_phase(b, recomp.compile_program_function(), parameters.interlock_discarded);
         }
     }
 
     // We reach the end
-    // Call end hook. If it's discard, this is not even called, so no worry
-    b.createFunctionCall(end_hook_func, {});
+    // Suppress the framebuffer store if an interlock phase discarded.
+    call_fragment_phase(b, end_hook_func, parameters.interlock_discarded);
 
     if (features.should_use_shader_interlock() && program.is_fragment() && program.is_frag_color_used())
         b.createNoResultOp(spv::OpEndInvocationInterlockEXT);

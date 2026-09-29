@@ -77,8 +77,9 @@ static size_t count_op(const std::vector<uint32_t> &words, spv::Op opcode, int o
     return found;
 }
 
-static std::vector<uint32_t> compile(SyntheticProgram &fixture, bool mapping, const std::string &name, const std::string &directory) {
+static std::vector<uint32_t> compile(SyntheticProgram &fixture, bool mapping, const std::string &name, const std::string &directory, bool interlock = false) {
     FeatureState features{};
+    features.support_shader_interlock = interlock;
     features.enable_memory_mapping = mapping;
     shader::Hints hints{};
     std::vector<SceGxmVertexAttribute> attributes;
@@ -94,8 +95,12 @@ static std::vector<uint32_t> compile(SyntheticProgram &fixture, bool mapping, co
     auto options = msl.get_msl_options();
     options.platform = spirv_cross::CompilerMSL::Options::iOS;
     options.set_msl_version(2, 3);
+    options.check_discarded_frag_stores = true;
     msl.set_msl_options(options);
-    require(!msl.compile().empty(), "SPIRV-Cross failed to emit Metal source");
+    const auto metal = msl.compile();
+    require(!metal.empty(), "SPIRV-Cross failed to emit Metal source");
+    if (interlock)
+        require(metal.find("simd_is_helper_thread") == std::string::npos, "interlock discard emitted unsupported helper query");
     return result.spirv;
 }
 
@@ -273,6 +278,23 @@ static void test_translation(const std::string &directory) {
     compile(vertex, false, "empty_vertex", directory);
 }
 
+static void test_interlock_discard(const std::string &directory) {
+    for (uint32_t pred : { 0U, 1U }) {
+        SyntheticProgram fixture;
+        fixture.program.program_flags |= SCE_GXM_PROGRAM_FLAG_FRAGCOLOR_USED | SCE_GXM_PROGRAM_FLAG_DISCARD_USED;
+        fixture.program.primary_program_instr_count = 1;
+        fixture.code[0] = encode("11111001--11000000000pp0000001101111----------------------------", { { 'p', pred } });
+        auto words = compile(fixture, false, "interlock_discard_" + std::to_string(pred), directory, true);
+        require(count_op(words, spv::OpKill) == 0, "iOS interlock KILL must be lowered to phase return");
+        require(count_op(words, spv::OpBeginInvocationInterlockEXT) == 1, "interlock begin lost");
+        require(count_op(words, spv::OpEndInvocationInterlockEXT) == 1, "interlock end lost");
+        // Native/non-interlock fragment discard remains unchanged.
+        fixture.program.program_flags &= ~SCE_GXM_PROGRAM_FLAG_FRAGCOLOR_USED;
+        words = compile(fixture, false, "native_discard_" + std::to_string(pred), directory);
+        require(count_op(words, spv::OpKill) != 0, "native discard lost");
+    }
+}
+
 int main(int argc, char **argv) {
     try {
         require(argc == 2, "pass shader output directory");
@@ -281,6 +303,7 @@ int main(int argc, char **argv) {
         test_predicates_and_lod();
         test_branch_analysis();
         test_translation(argv[1]);
+        test_interlock_discard(argv[1]);
         test_address_arithmetic(argv[1]);
         test_mapped_buffer_access(argv[1]);
         std::cout << "Shader/GXM regression checks passed\n";
