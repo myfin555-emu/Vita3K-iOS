@@ -14,6 +14,7 @@ on:
       - ".ci/package-ios.sh"
       - ".ci/install-moltenvk.cmake"
       - ".github/workflows/ios-upstream.yml"
+      - ".github/workflows/vulkan-checks.yml"
   pull_request:
     paths:
       - "CMakeLists.txt"
@@ -24,6 +25,7 @@ on:
       - ".ci/package-ios.sh"
       - ".ci/install-moltenvk.cmake"
       - ".github/workflows/ios-upstream.yml"
+      - ".github/workflows/vulkan-checks.yml"
 
 permissions:
   contents: read
@@ -43,8 +45,11 @@ jobs:
           cmake --build build-native-tests
           ctest --test-dir build-native-tests --output-on-failure
 
+  vulkan-support-tests:
+    uses: ./.github/workflows/vulkan-checks.yml
+
   unsigned-ipa:
-    needs: native-support-tests
+    needs: [native-support-tests, vulkan-support-tests]
     name: Upstream core arm64 device link
     runs-on: macos-15
     timeout-minutes: 180

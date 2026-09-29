@@ -1,0 +1,60 @@
+name: Vulkan renderer checks
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    paths:
+      - "vita3k/renderer/**"
+      - "vita3k/vkutil/**"
+      - "vita3k/util/**"
+      - "external/**"
+      - "ios/tests/vulkan/**"
+      - "ios/cmake/*MoltenVK*.cmake"
+      - ".ci/install-moltenvk.cmake"
+      - ".github/workflows/vulkan-checks.yml"
+  pull_request:
+    paths:
+      - "vita3k/renderer/**"
+      - "vita3k/vkutil/**"
+      - "vita3k/util/**"
+      - "external/**"
+      - "ios/tests/vulkan/**"
+      - "ios/cmake/*MoltenVK*.cmake"
+      - ".ci/install-moltenvk.cmake"
+      - ".github/workflows/vulkan-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  vulkan-support-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned header dependencies
+        run: git submodule update --init --recursive external/VulkanMemoryAllocator-Hpp external/boost external/fmt
+      - name: Install software Vulkan and validation layers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers
+      - name: Compile production headers and run renderer regressions
+        # Use the headers pinned with VMA-Hpp, rather than the runner's SDK version.
+        # The Vulkan loader/driver may be older than these compile-time headers.
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: |
+          cmake -S ios/tests/vulkan -B build-vulkan-tests -DCMAKE_BUILD_TYPE=Debug \
+            -DVulkan_INCLUDE_DIR="$PWD/external/VulkanMemoryAllocator-Hpp/Vulkan-Headers/include"
+          cmake --build build-vulkan-tests -j 2
+          ctest --test-dir build-vulkan-tests --output-on-failure
+      - name: Check the iOS MoltenVK headers on the host
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: |
+          cmake -P .ci/install-moltenvk.cmake
+          cmake -S ios/tests/vulkan -B build-moltenvk-header-tests -DCMAKE_BUILD_TYPE=Debug \
+            -DVulkan_INCLUDE_DIR="$PWD/build-deps/moltenvk/MoltenVK/MoltenVK/include"
+          cmake --build build-moltenvk-header-tests -j 2
+          ctest --test-dir build-moltenvk-header-tests --output-on-failure
