@@ -361,14 +361,18 @@ separate Metal `air.simd_is_helper_thread` shader rejection now visible in the l
 ### Apple A11 tutorial rendering and frame-time investigation
 
 The d6482d3 log confirms tutorial entry but still rejects framebuffer-fetch
-pipelines with `air.simd_is_helper_thread` during Metal compilation. Apple A11
-on iOS now selects the existing subpass-input framebuffer-fetch path instead
-of storage-image shader interlock, including with High Accuracy enabled.
-Other High Accuracy controls (such as texture viewport) retain their settings;
-other GPU models retain the previous selection. The existing shader cache
-feature mask includes interlock, so an incompatible saved cache is rebuilt.
-This is a targeted compatibility workaround; subpass feedback may be less
-accurate than ordered interlock in overlapping draws on this device.
+pipelines with `air.simd_is_helper_thread` during Metal compilation. The A11
+subpass override introduced in cb65e98 was withdrawn after device screenshots
+showed opaque black rectangles over menus, text and lobby displays with High
+Accuracy enabled. The renderer again honors High Accuracy by using shader
+interlock when supported, exactly as in d6482d3. Do not force subpass fetch to
+bypass the compiler error without validating overlapping transparent draws.
+
+The existing shader cache feature mask includes interlock, so a saved cache
+with the overridden feature selection is invalidated on the next launch.
+Reinstalling the app or deleting saves is not required for this change.
+The pipeline rejection containment remains in place; the underlying Metal
+compiler failure still needs a separate fix and device verification.
 
 Missing minimap/blood overlay and transient stretched buff geometry still need
 image comparison on device. Pipeline rejection establishes missing draws but
