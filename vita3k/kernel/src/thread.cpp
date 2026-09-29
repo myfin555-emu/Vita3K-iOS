@@ -435,6 +435,7 @@ void ThreadState::update_status(ThreadStatus status, std::optional<ThreadStatus>
 
     this->status = status;
     status_cond.notify_all();
+    primitive_cond.notify_all();
 
     if (status == ThreadStatus::dormant) {
         raise_waiting_threads();

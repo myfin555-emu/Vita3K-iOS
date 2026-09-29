@@ -80,7 +80,12 @@ struct ThreadState {
 
     ThreadSignal signal;
     std::vector<CallbackPtr> callbacks;
+    // Lifecycle/debugger waiters always use ThreadState::mutex.
     std::condition_variable status_cond;
+    // Guest sync waits hold their primitive's mutex instead. They can overlap
+    // run_guest_function's lifecycle wait during module_start; a POSIX condvar
+    // must not be bound to two different mutexes at the same time.
+    std::condition_variable primitive_cond;
     std::vector<std::shared_ptr<ThreadState>> waiting_threads;
     uint32_t returned_value = 0;
 

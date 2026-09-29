@@ -85,7 +85,7 @@ inline static int handle_timeout(KernelState &kernel, const ThreadStatePtr &thre
         bool status = false;
         auto start = std::chrono::steady_clock::now();
         if (*timeout > 0) {
-            status = thread->status_cond.wait_for(primitive_lock, std::chrono::microseconds{ *timeout }, [&] { return thread->status == ThreadStatus::run; });
+            status = thread->primitive_cond.wait_for(primitive_lock, std::chrono::microseconds{ *timeout }, [&] { return thread->status == ThreadStatus::run; });
         }
 
         if (!status) {
@@ -108,7 +108,7 @@ inline static int handle_timeout(KernelState &kernel, const ThreadStatePtr &thre
             }
         }
     } else {
-        thread->status_cond.wait(primitive_lock, [&] { return thread->status == ThreadStatus::run; });
+        thread->primitive_cond.wait(primitive_lock, [&] { return thread->status == ThreadStatus::run; });
     }
 
     return SCE_KERNEL_OK;

@@ -49,3 +49,7 @@ add_executable(pvrtc_decode_tests PVRTCDecodeTests.cpp ../../vita3k/renderer/src
 target_compile_features(pvrtc_decode_tests PRIVATE cxx_std_17)
 target_include_directories(pvrtc_decode_tests PRIVATE ../../vita3k/renderer/include)
 add_test(NAME pvrtc_decode_tests COMMAND pvrtc_decode_tests)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME thread_wait_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ThreadWaitTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(thread_wait_tests PROPERTIES TIMEOUT 30)

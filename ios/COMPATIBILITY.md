@@ -338,3 +338,22 @@ using a rejected pipeline are skipped and may leave objects or effects missing.
 The existing log does not identify the Metal compiler's reason. Verify entering
 the lobby on device, and inspect `Vulkan driver/validation` and `Pipeline rejected`
 messages if rendering is incomplete or the app still exits.
+
+### Mission module-start wait on Darwin
+
+The 742a956 device log reaches the lobby, then aborts during
+`god_g000_Field.self` startup with `condition_variable wait failed: Invalid argument`.
+Matching the shipped IPA's symbol table places the throwing wait in
+`ThreadState::run_guest_function`, called by `start_module`. This lifecycle
+wait holds `ThreadState::mutex`, while guest synchronization inside the started
+module previously waited on the same condition variable with a primitive mutex.
+Concurrent waits with different mutexes violate the POSIX condition-variable
+contract and are rejected by Darwin.
+
+Guest primitive waits now use a separate condition variable, and status changes
+notify both channels. Timeout accounting and guest wakeup predicates are unchanged.
+The portable regression executes the production wait/update bodies with a checked
+condition variable enforcing the mutex-binding rule on Linux. It covers overlapping
+module and guest waits, timed and untimed wakeups, and timeout queue removal.
+Mission entry still needs device verification. This change does not resolve the
+separate Metal `air.simd_is_helper_thread` shader rejection now visible in the log.
