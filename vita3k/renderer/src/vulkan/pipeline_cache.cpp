@@ -18,6 +18,7 @@
 #include <renderer/vulkan/pipeline_cache.h>
 #include <renderer/vulkan/pipeline_cache_data.h>
 #include <renderer/vulkan/render_pass_dependencies.h>
+#include <renderer/vulkan/vertex_stream.h>
 
 #include <renderer/vulkan/gxm_to_vulkan.h>
 #include <renderer/vulkan/state.h>
@@ -718,7 +719,9 @@ vk::PipelineVertexInputStateCreateInfo PipelineCache::get_vertex_input_state(con
         const bool is_instanced = gxm::is_stream_instancing(static_cast<SceGxmIndexSource>(stream.indexSource));
 
 #ifdef __APPLE__
-        const uint32_t stride = align(stream.stride, 4);
+        const uint32_t stride = state.features.enable_memory_mapping
+            ? align(stream.stride, 4)
+            : metal_vertex_stride(stream.stride, stream_index, attr_descr);
 #else
         const uint32_t stride = stream.stride;
 #endif

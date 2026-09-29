@@ -41,6 +41,7 @@ struct SyntheticProgram {
     SceGxmProgramVertexVaryings varyings{};
     SceGxmProgramParameter parameters[2]{};
     SceGxmProgramParameterContainer containers[1]{};
+    char attribute_name[16] = "raw_attribute";
     alignas(8) uint64_t code[32]{};
 
     explicit SyntheticProgram(bool fragment = true) {
@@ -102,6 +103,57 @@ static std::vector<uint32_t> compile(SyntheticProgram &fixture, bool mapping, co
     if (interlock)
         require(metal.find("simd_is_helper_thread") == std::string::npos, "interlock discard emitted unsupported helper query");
     return result.spirv;
+}
+
+// Register-format streams contain already packed USSE register bits. Driver
+// support for scaled/RGB formats must not change how those bits reach pa[].
+static void test_raw_vertex_inputs(const std::string &directory) {
+    for (bool half : {true, false}) {
+        for (bool raw : {false, true}) {
+            SyntheticProgram fixture(false);
+            fixture.program.parameter_count = 1;
+            fixture.program.primary_reg_count = 4;
+            fixture.varyings.untyped_pa_regs = raw ? 1 : 0;
+            auto &parameter = fixture.parameters[0];
+            parameter.name_offset = reinterpret_cast<const uint8_t *>(fixture.attribute_name)
+                - reinterpret_cast<const uint8_t *>(&parameter.name_offset);
+            parameter.category = SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE;
+            parameter.type = half ? SCE_GXM_PARAMETER_TYPE_F16 : SCE_GXM_PARAMETER_TYPE_F32;
+            parameter.component_count = 4;
+            parameter.array_size = 1;
+            std::vector<SceGxmVertexAttribute> attributes(1);
+            attributes[0].format = raw && !half ? SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED : SCE_GXM_ATTRIBUTE_FORMAT_U16;
+            attributes[0].componentCount = half && raw ? 4 : 3;
+            shader::Hints hints{};
+            hints.attributes = &attributes;
+            FeatureState features{};
+            features.support_scaled_attribute_formats = false;
+            features.support_rgb_attributes = false;
+            const auto name = std::string(raw ? "raw_" : "typed_") + (half ? "half" : "float");
+            auto translated = shader::convert_gxp(fixture.program, name, features, shader::Target::SpirVVulkan, hints);
+            require(!translated.spirv.empty(), "attribute shader generation failed");
+            const auto conversions = count_op(translated.spirv, spv::OpConvertUToF);
+            require(raw ? conversions == 0 : conversions > 0,
+                "raw register bits must bypass scaled conversion; typed inputs must retain it");
+            features.support_scaled_attribute_formats = true;
+            features.support_rgb_attributes = true;
+            auto native = shader::convert_gxp(fixture.program, name, features, shader::Target::SpirVVulkan, hints);
+            if (raw)
+                require(translated.spirv == native.spirv,
+                    "raw input changes with scaled/RGB driver capabilities");
+            std::ofstream file(directory + "/" + name + ".spv", std::ios::binary);
+            file.write(reinterpret_cast<const char *>(translated.spirv.data()), translated.spirv.size() * sizeof(uint32_t));
+            require(bool(file), "could not save attribute shader");
+            spirv_cross::CompilerMSL msl(translated.spirv);
+            auto options = msl.get_msl_options();
+            options.platform = spirv_cross::CompilerMSL::Options::iOS;
+            options.set_msl_version(2, 3);
+            msl.set_msl_options(options);
+            const auto metal = msl.compile();
+            require(!metal.empty(), "attribute shader MSL generation failed");
+            std::ofstream(directory + "/" + name + ".metal") << metal;
+        }
+    }
 }
 
 static void test_uniform_layout() {
@@ -299,6 +351,7 @@ int main(int argc, char **argv) {
     try {
         require(argc == 2, "pass shader output directory");
         spdlog::set_level(spdlog::level::warn);
+        test_raw_vertex_inputs(argv[1]);
         test_uniform_layout();
         test_predicates_and_lod();
         test_branch_analysis();

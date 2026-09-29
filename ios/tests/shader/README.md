@@ -18,6 +18,11 @@ cmake --build build-shader-tests -j 4
 ctest --test-dir build-shader-tests --output-on-failure
 ```
 
+Tests also compare raw F16/F32 attribute shaders with scaled/RGB capabilities
+enabled and disabled: their register bits must be identical, while typed U16
+attributes still receive numeric conversion. All four cases are translated to
+iOS MSL and validated as SPIR-V.
+
 Tests cover synthetic GXP uniform layouts, USSE predicates/branches, base-2
 complex arithmetic, conditional vector moves, integer instruction repetition,
 initialized registers, signed GPU address addition and mapped byte/half/word

@@ -500,3 +500,27 @@ They do not certify either game's graphics, playable FPS, or compatibility with
 untested games. Device verification remains required: replay Gravity Rush's
 opening and gameplay, then compare each God Eater title's menu open/closed with
 the same resolution, High Accuracy and overlay settings, and retain fresh logs.
+
+
+### Raw vertex inputs and Metal stride follow-up
+
+The 284f74e Gravity Rush capture still shows stretched scene surfaces and missing
+geometry on Apple A11. MoltenVK reports truncating a 16-byte UInt4 vertex input
+to UInt3 because its binding stride is 12 bytes.
+
+Two shader-input errors were reproduced with synthetic GXP programs: the scaled
+attribute fallback numerically converted raw half bits, and the RGB fallback
+replaced a raw fourth lane with integer 1. Register-format attributes now bypass
+both typed conversions. Typed attributes retain their conversion and padding.
+Shader cache version 18 automatically rebuilds SPIR-V and pipeline caches.
+
+For uploaded Apple vertex streams, pipeline strides now include the full
+attribute extent. The upload uses the same layout and expands overlapping guest
+records, preserving available bytes and zeroing short tails. This prevents
+MoltenVK from silently truncating wide attributes and removes the old restrider's
+out-of-bounds read at the end of partial records. Constant bindings stay constant.
+
+The regression suites check actual GXP-to-SPIR-V/MSL translation and exact
+repacked bytes. These establish the code defects and the corrected paths; a new
+iPhone capture is still needed to establish which remaining game glitches they
+resolve. Native Metal shader execution and gameplay FPS are not measured here.

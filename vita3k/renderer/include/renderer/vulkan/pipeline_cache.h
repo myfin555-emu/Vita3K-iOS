@@ -96,7 +96,6 @@ private:
     std::set<uint64_t> failed_pipelines;
 
     vk::PipelineShaderStageCreateInfo retrieve_shader(const SceGxmProgram *program, const Sha256Hash &hash, bool is_vertex, bool maskupdate, MemState &mem, const shader::Hints &hints, bool is_srgb = false);
-    vk::PipelineVertexInputStateCreateInfo get_vertex_input_state(const SceGxmVertexProgram &vertex_program, MemState &mem);
 
     // queue containing request sent by the main thread to the compile threads
     PipelineCompileQueue pipeline_compile_queue;
@@ -109,6 +108,8 @@ private:
     vk::Pipeline compile_pipeline(SceGxmPrimitiveType type, vk::RenderPass render_pass, const SceGxmVertexProgram &vertex_program_gxm, const SceGxmFragmentProgram &fragment_program_gxm, const GxmRecordState &record, const shader::Hints &hints, MemState &mem);
 
 public:
+    // Shared by pipeline creation and Metal vertex upload so their strides agree.
+    vk::PipelineVertexInputStateCreateInfo get_vertex_input_state(const SceGxmVertexProgram &vertex_program, MemState &mem);
     // if not 0, next time the pipeline cache should be saved (in seconds since epoch)
     uint64_t next_pipeline_cache_save = std::numeric_limits<uint64_t>::max();
 

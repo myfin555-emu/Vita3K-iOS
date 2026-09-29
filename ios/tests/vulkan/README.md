@@ -46,6 +46,10 @@ installing the companion `vulkan-checks.yml` workflow and adding its reusable
 job to `unsigned-ipa.needs` in `ios-upstream.yml`. Workflow installation requires
 GitHub workflow write permission; the source/test fix can be pushed separately.
 
+The vertex-stream test checks Metal stride expansion for the logged UInt4/12-byte
+case, interleaved attribute offsets, overlapping guest records, constant bindings
+and zero-padded short final records.
+
 The C++ test uses the production dependency and descriptor-cache helpers. It
 creates each render-pass mode on the Vulkan device with validation enabled,
 checks attachment/storage/sampling dependency coverage, and checks immutable

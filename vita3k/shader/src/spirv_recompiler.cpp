@@ -98,6 +98,7 @@ struct VarToReg {
     uint32_t size;
     DataType dtype;
     bool convert_to_float; // is the the an integer that has to be seen as a float?
+    bool regformat; // input contains packed USSE register bits, not typed components
 };
 
 struct TranslationState {
@@ -251,7 +252,7 @@ static spv::Id create_param_sampler(spv::Builder &b, const std::string &name, co
     return b.createVariable(spv::NoPrecision, spv::StorageClassUniformConstant, sampled_image_type, name.c_str());
 }
 
-static spv::Id create_input_variable(spv::Builder &b, SpirvShaderParameters &parameters, utils::SpirvUtilFunctions &utils, const FeatureState &features, const TranslationState &translation_state, const char *name, const RegisterBank bank, const std::uint32_t offset, spv::Id type, const std::uint32_t size, spv::Id force_id = spv::NoResult, DataType dtype = DataType::F32, bool convert_to_float = false) {
+static spv::Id create_input_variable(spv::Builder &b, SpirvShaderParameters &parameters, utils::SpirvUtilFunctions &utils, const FeatureState &features, const TranslationState &translation_state, const char *name, const RegisterBank bank, const std::uint32_t offset, spv::Id type, const std::uint32_t size, spv::Id force_id = spv::NoResult, DataType dtype = DataType::F32, bool convert_to_float = false, bool regformat = false) {
     uint32_t total_var_comp = size;
     spv::Id var = !force_id ? (b.createVariable(spv::NoPrecision, reg_type_to_spv_storage_class(bank), type, name)) : force_id;
     Operand dest;
@@ -303,7 +304,9 @@ static spv::Id create_input_variable(spv::Builder &b, SpirvShaderParameters &par
                 var = b.createLoad(var, spv::NoPrecision);
             var = utils::finalize(b, var, var, SWIZZLE_CHANNEL_4_DEFAULT, b.makeIntConstant(0), dest_mask);
 
-            if (!features.support_rgb_attributes && !translation_state.is_fragment && dest_mask == 0b1111) {
+            // Register-format attributes must retain every input bit. In particular,
+            // integer 1 is not the bit pattern of float/half 1.0.
+            if (!regformat && !features.support_rgb_attributes && !translation_state.is_fragment && dest_mask == 0b1111) {
                 // if the vertex input was rgb, the alpha component must be set to 1,
                 // however it will be set to whatever is in memory after the blue component
                 for (const auto &attribute : *translation_state.hints->attributes) {
@@ -1188,7 +1191,10 @@ static SpirvShaderParameters create_parameters(spv::Builder &b, const SceGxmProg
         const int type_size = get_data_type_size(input.type);
         DataType input_type = input.type;
 
-        if (!features.support_scaled_attribute_formats
+        // Raw inputs already have the register representation expected by USSE.
+        // Applying the typed U8/U16 fallback would convert half bits (e.g.
+        // 0x3c00 for 1.0) to the numeric value 15360 before packing them again.
+        if (!regformat && !features.support_scaled_attribute_formats
             && (input_type == DataType::F32 || input_type == DataType::F16)) {
             // find the matching attribute
             SceGxmAttributeFormat format = SCE_GXM_ATTRIBUTE_FORMAT_F32;
@@ -1233,6 +1239,7 @@ static SpirvShaderParameters create_parameters(spv::Builder &b, const SceGxmProg
         var_to_reg.pa = pa;
         var_to_reg.offset = input.offset;
         var_to_reg.convert_to_float = (input_type != input.type);
+        var_to_reg.regformat = regformat;
         if (regformat) {
             DataType unsigned_matching_type;
             if (type_size == 1)
@@ -1989,7 +1996,7 @@ static SpirvCode convert_gxp_to_spirv_impl(const SceGxmProgram &program, const s
 
         for (auto &var_to_reg : translation_state.var_to_regs) {
             create_input_variable(b, parameters, utils, features, translation_state, "", var_to_reg.pa ? RegisterBank::PRIMATTR : RegisterBank::SECATTR,
-                var_to_reg.offset, spv::NoResult, var_to_reg.size, var_to_reg.var, var_to_reg.dtype, var_to_reg.convert_to_float);
+                var_to_reg.offset, spv::NoResult, var_to_reg.size, var_to_reg.var, var_to_reg.dtype, var_to_reg.convert_to_float, var_to_reg.regformat);
         }
 
         // Initialize vertex output to 0
