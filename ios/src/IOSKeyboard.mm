@@ -243,7 +243,7 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     // game keeps SceIme open. A later close/open increments generation.
     if (dismissed) {
         // Dismissing the system keyboard is not proof that the game accepted
-        // the name. Keep an opaque native input screen until the guest closes
+        // the name. Keep the native input card until the guest closes
         // IME, with explicit editing available once its callback returns.
         if (keyboard) {
             keyboard.heading.text = @"Waiting for game";
@@ -290,7 +290,7 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     keyboard.cancelable = cancelable;
     LOG_INFO("Native IME show: session={} dialog={} length={}", generation, isDialog, text.size());
     keyboard.backdrop = [UIView new];
-    keyboard.backdrop.backgroundColor = UIColor.whiteColor;
+    keyboard.backdrop.backgroundColor = UIColor.clearColor;
     keyboard.backdrop.frame = window.bounds;
     keyboard.backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     keyboard.panel = [UIView new];
@@ -351,13 +351,17 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     [keyboard.backdrop addSubview:keyboard.panel];
     [window addSubview:keyboard.backdrop];
     [window bringSubviewToFront:keyboard.backdrop];
+    // Attach the keyboard guide to the content view that owns the editor.
+    // Keep only the card opaque, with a readable width on landscape/iPad.
+    NSLayoutConstraint *preferredWidth = [keyboard.panel.widthAnchor constraintEqualToAnchor:keyboard.backdrop.safeAreaLayoutGuide.widthAnchor constant:-24];
+    preferredWidth.priority = UILayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
-        [keyboard.panel.leadingAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.leadingAnchor
-                                                     constant:12],
-        [keyboard.panel.trailingAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.trailingAnchor
-                                                      constant:-12],
-        [keyboard.panel.bottomAnchor constraintEqualToAnchor:window.keyboardLayoutGuide.topAnchor
-                                                    constant:-8],
+        preferredWidth,
+        [keyboard.panel.widthAnchor constraintLessThanOrEqualToConstant:600],
+        [keyboard.panel.centerXAnchor constraintEqualToAnchor:keyboard.backdrop.safeAreaLayoutGuide.centerXAnchor],
+        [keyboard.panel.leadingAnchor constraintGreaterThanOrEqualToAnchor:keyboard.backdrop.safeAreaLayoutGuide.leadingAnchor constant:12],
+        [keyboard.panel.trailingAnchor constraintLessThanOrEqualToAnchor:keyboard.backdrop.safeAreaLayoutGuide.trailingAnchor constant:-12],
+        [keyboard.panel.bottomAnchor constraintEqualToAnchor:keyboard.backdrop.keyboardLayoutGuide.topAnchor constant:-8],
         [stack.leadingAnchor constraintEqualToAnchor:keyboard.panel.leadingAnchor
                                             constant:12],
         [stack.trailingAnchor constraintEqualToAnchor:keyboard.panel.trailingAnchor

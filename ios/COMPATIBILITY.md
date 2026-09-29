@@ -151,11 +151,10 @@ returned through the guest APIs, not injected as simulated controller presses.
 `ios/src/IOSKeyboard.mm` implements that boundary using a native `UITextView`:
 
 - Existing text, caret, keyboard type, return label and editor height come
-  from the game's request. A native input screen with an opaque white backdrop
-  replaces the guest image while the IME session is active, including the
-  corrupted guest textbox. Its black-text editor follows the keyboard layout
-  guide in portrait and landscape. This substitutes the input UI; it does not
-  repair unrelated game textures or shaders. On iOS the GPU
+  from the game's request. A compact white input card with black text follows
+  the content view's keyboard layout guide in portrait and landscape, with a
+  maximum width of 600 points. Its surrounding view is transparent so the game
+  stays visible. On iOS the GPU
   IME dialog and its competing controller input handler are suppressed; other
   common dialogs continue using the renderer.
 - iOS owns composition, selection, paste, deletion and hardware keyboard input.
@@ -169,7 +168,7 @@ returned through the guest APIs, not injected as simulated controller presses.
 - Return confirms even for multiline requests; pasting multiline text is still
   supported. Selecting a marked-text composition candidate does not confirm.
 - Confirmation/cancellation dismisses the system keyboard but keeps the native
-  input screen visible until the game closes its IME request. It says "Waiting
+  input card visible until the game closes its IME request. It says "Waiting
   for game" and offers explicit Edit after the terminal callback returns, so a
   game that rejects a name does not leave the editor permanently disabled.
   An empty event slot never automatically reopens the system keyboard.
@@ -306,3 +305,18 @@ swapchain rebuild at a stable size. Also verify module override/reset, volume,
 texture-cache toggle, cache persistence after restart, and setup without `pd0`.
 Portable tests cover invalid/freed page ranges and overflow, but cannot certify
 UIKit, Vulkan, or game behavior on device.
+
+### PVRTC upload correction
+
+The PCSE00801 device log from build 77a341bd confirmed native PVRTC support
+was detected on Apple A11. That previously bypassed CPU decoding even though
+both renderer backends allocate RGBA images for these formats. Compressed
+words were copied using the wrong pixel layout. PVRTC1/2 at 2/4 bpp now always
+use the existing software decoder before upload, matching image allocation.
+This can increase texture-load CPU work on devices that previously skipped it.
+
+The same log confirms both Name and Codename delivered Enter and the guest
+called sceImeClose. It also ends in createGraphicsPipeline ErrorInitializationFailed;
+that separate pipeline failure is not diagnosed by the PVRTC fix. Device checks
+still need to cover character textures, later scenes and rotation. The compact
+input card needs portrait/landscape verification with the system keyboard visible.

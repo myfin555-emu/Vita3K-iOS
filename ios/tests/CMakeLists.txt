@@ -44,3 +44,8 @@ add_executable(ime_guest_event_tests IMEGuestEventTests.cpp)
 target_compile_features(ime_guest_event_tests PRIVATE cxx_std_17)
 target_include_directories(ime_guest_event_tests PRIVATE ../../vita3k/ime/include ../../vita3k/mem/include ../../vita3k/util/include)
 add_test(NAME ime_guest_event_tests COMMAND ime_guest_event_tests)
+
+add_executable(pvrtc_decode_tests PVRTCDecodeTests.cpp ../../vita3k/renderer/src/texture/pvrt-dec.cpp)
+target_compile_features(pvrtc_decode_tests PRIVATE cxx_std_17)
+target_include_directories(pvrtc_decode_tests PRIVATE ../../vita3k/renderer/include)
+add_test(NAME pvrtc_decode_tests COMMAND pvrtc_decode_tests)

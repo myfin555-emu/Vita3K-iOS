@@ -473,10 +473,10 @@ void TextureCache::upload_texture(const SceGxmTexture &gxm_texture, MemState &me
         case SCE_GXM_TEXTURE_BASE_FORMAT_PVRT4BPP:
         case SCE_GXM_TEXTURE_BASE_FORMAT_PVRTII2BPP:
         case SCE_GXM_TEXTURE_BASE_FORMAT_PVRTII4BPP:
-            if (support_pvrt) {
-                LOG_INFO_ONCE("Your device support SCE_GXM_TEXTURE_BASE_FORMAT_PVRT");
-                break;
-            }
+            // Both backends allocate RGBA images for PVRTC. Device format
+            // support alone cannot bypass decoding: copying compressed words
+            // into that image leaves invalid colors and incomplete rows.
+            LOG_INFO_ONCE("Decoding PVRTC textures to RGBA before upload");
             if (!is_swizzled)
                 LOG_ERROR_ONCE("Unhandled non-swizzled PVRT format, please report it to the developers");
 
