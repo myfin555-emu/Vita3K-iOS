@@ -155,10 +155,8 @@ void vita3k_ios_close_keyboard() {
         return;
     keyboard.environment = nullptr;
     keyboard.editor.delegate = nil;
-    // PERF FIX: Force immediate dismissal without waiting for textView willEndEditing
+    // Dismiss immediately; let UIKit deliver hide notifications on the normal run loop.
     [keyboard.editor resignFirstResponder];
-    // Ensure UIKeyboardWillHide is processed by running a brief event loop
-    [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
     [keyboard.panel removeFromSuperview];
     keyboard = nil;
     vita3k_ios_show_virtual_controller();

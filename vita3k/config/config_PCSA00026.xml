@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- God Eater Resurrection (PCSA00026) - Optimized Configuration -->
+<!-- Experimental profile from source branch; verify title ID and settings before use -->
 <config>
     <core modules-mode="1">
         <!-- LLE Modules for God Eater Resurrection -->
@@ -10,10 +10,10 @@
             <module>sceSsl</module>
         </lle-modules>
     </core>
-    
+
     <cpu cpu-opt="true"/>
-    
-    <gpu 
+
+    <gpu
         backend-renderer="Vulkan"
         gpu-idx="0"
         high-accuracy="true"
@@ -31,13 +31,13 @@
         shader-cache="true"
         spirv-shader="false"
         texture-cache="true"/>
-    
-    <audio 
+
+    <audio
         audio-backend="SDL"
         audio-volume="100"
         enable-ngs="true"/>
-    
-    <system 
+
+    <system
         pstv-mode="false"
         sys-button="0"
         sys-lang="0"
@@ -47,17 +47,17 @@
             <lang>4</lang>
         </ime-langs>
     </system>
-    
-    <emulator 
+
+    <emulator
         file-loading-delay="0"
         stretch-the-display-area="false"
         fullscreen-hd-res-pixel-perfect="false"/>
-    
-    <debug 
+
+    <debug
         log-active-shaders="false"
         log-uniforms="false"
         color-surface-debug="false"
         validation-layer="true"/>
-    
+
     <network psn-signed-in="false"/>
 </config>

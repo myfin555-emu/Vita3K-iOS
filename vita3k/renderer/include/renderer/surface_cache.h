@@ -3,13 +3,13 @@
 #include <cstdint>
 #include <vector>
 #include <unordered_set>
-#include <memory>
+#include <cstddef>
 
 namespace renderer {
 
 /**
  * @brief Efficient surface change tracking using hash set
- * 
+ *
  * Replaces previous O(n) vector scan with O(1) hash set lookup.
  * Critical optimization for games with heavy surface sync operations (e.g., God Eater Resurrection).
  */
@@ -23,7 +23,7 @@ public:
     bool is_dirty(uint64_t address) const {
         return dirty_surfaces.count(address) > 0;
     }
-    
+
     /**
      * @brief Mark surface address as changed
      * @param address GPU surface address to mark dirty
@@ -32,7 +32,7 @@ public:
     bool mark_dirty(uint64_t address) {
         return dirty_surfaces.insert(address).second;
     }
-    
+
     /**
      * @brief Batch mark multiple surfaces as changed
      * @param addresses Vector of GPU surface addresses
@@ -42,15 +42,15 @@ public:
             dirty_surfaces.insert(addr);
         }
     }
-    
+
     /**
      * @brief Get count of dirty surfaces in current frame
      * @return Number of unique dirty surface addresses
      */
-    size_t count_dirty() const {
+    std::size_t count_dirty() const {
         return dirty_surfaces.size();
     }
-    
+
     /**
      * @brief Clear dirty surface tracking for next frame
      * Called at end of each render frame
@@ -58,7 +58,7 @@ public:
     void clear_frame() {
         dirty_surfaces.clear();
     }
-    
+
     /**
      * @brief Check if any surfaces changed in this frame
      * @return true if dirty_surfaces is not empty

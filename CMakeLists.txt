@@ -71,7 +71,7 @@ endif()
 
 # Apply symbol visibility across all platforms in Release builds to reduce binary size
 # and enable better inlining/optimization opportunities
-if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT MSVC)
+if(NOT MSVC)
     string(APPEND CMAKE_C_FLAGS_RELEASE " -fvisibility=hidden")
     string(APPEND CMAKE_CXX_FLAGS_RELEASE " -fvisibility=hidden -fvisibility-inlines-hidden")
 endif()
