@@ -4,6 +4,7 @@ add_library(
 	include/vkutil/native_surface.h
 	include/vkutil/objects.h
 	include/vkutil/vkutil.h
+	include/vkutil/vulkan.h
 
 	src/objects.cpp
 	src/vkutil.cpp

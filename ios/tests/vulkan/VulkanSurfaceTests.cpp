@@ -4,6 +4,8 @@
 #include <iostream>
 #include <cstring>
 
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+
 using namespace renderer::vulkan;
 void require(bool ok, const char *message) {
     if (!ok) { std::cerr << message << '\n'; std::exit(1); }
@@ -70,6 +72,7 @@ void dependency_coverage() {
 }
 
 int main() {
+    VULKAN_HPP_DEFAULT_DISPATCHER.init();
     descriptor_reuse();
     dependency_coverage();
     const char *layer = "VK_LAYER_KHRONOS_validation";
@@ -81,6 +84,7 @@ int main() {
         .enabledLayerCount = 1, .ppEnabledLayerNames = &layer,
         .enabledExtensionCount = 1, .ppEnabledExtensionNames = &extension};
     const auto instance = vk::createInstance(info);
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
     auto create_debug = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(instance.getProcAddr("vkCreateDebugUtilsMessengerEXT"));
     auto destroy_debug = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(instance.getProcAddr("vkDestroyDebugUtilsMessengerEXT"));
     VkDebugUtilsMessengerCreateInfoEXT debug{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
@@ -100,6 +104,7 @@ int main() {
     vk::DeviceQueueCreateInfo queue_info{.queueFamilyIndex = family, .queueCount = 1, .pQueuePriorities = &priority};
     vk::DeviceCreateInfo device_info{.queueCreateInfoCount = 1, .pQueueCreateInfos = &queue_info};
     const auto device = gpu.createDevice(device_info);
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
     // Validate every production render-pass mode and its stage/access masks.
     for (bool interlock : {false, true}) {
         for (bool no_color : {false, true}) {

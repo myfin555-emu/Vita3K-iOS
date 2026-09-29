@@ -20,6 +20,7 @@
 #include <array>
 #include <cstdint>
 #include <unordered_map>
+#include <vkutil/vulkan.h>
 #include <vulkan/vulkan_hash.hpp>
 
 namespace renderer::vulkan {

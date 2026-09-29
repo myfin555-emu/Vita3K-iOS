@@ -18,7 +18,7 @@
 #pragma once
 
 #include <array>
-#include <vulkan/vulkan.hpp>
+#include <vkutil/vulkan.h>
 
 namespace renderer::vulkan {
 

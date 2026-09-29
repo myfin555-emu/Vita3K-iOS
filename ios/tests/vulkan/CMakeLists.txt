@@ -2,13 +2,36 @@ cmake_minimum_required(VERSION 3.22)
 project(Vita3KVulkanSurfaceTests LANGUAGES CXX)
 enable_testing()
 find_package(Vulkan REQUIRED)
+get_filename_component(REPO_ROOT "../../.." ABSOLUTE)
+
+add_library(vulkan_test_headers INTERFACE)
+target_compile_features(vulkan_test_headers INTERFACE cxx_std_20)
+target_include_directories(vulkan_test_headers INTERFACE
+    ${REPO_ROOT}/vita3k/renderer/include
+    ${REPO_ROOT}/vita3k/vkutil/include
+    ${Vulkan_INCLUDE_DIRS})
+
+# Each header must configure Vulkan-Hpp correctly when it is the first include.
+# Do not supply VULKAN_HPP_* definitions here: doing so masked an iOS build failure.
+foreach(header IN ITEMS renderer/vulkan/render_pass_dependencies.h
+                        renderer/vulkan/texture_descriptor_cache.h vkutil/vkutil.h)
+    string(MAKE_C_IDENTIFIER "${header}" target)
+    set(source "${CMAKE_CURRENT_BINARY_DIR}/${target}.cpp")
+    file(WRITE "${source}" "#include <${header}>\n#include <vkutil/vkutil.h>\n#include <type_traits>\nstatic_assert(std::is_aggregate_v<vk::DescriptorImageInfo>);\nstatic_assert(std::is_aggregate_v<vma::AllocationCreateInfo>);\nconst vk::CommandBufferAllocateInfo command_info{.commandBufferCount = 1};\nconst vma::AllocationCreateInfo allocation_info{.usage = vma::MemoryUsage::eAuto};\n")
+    add_library(${target} OBJECT "${source}")
+    target_link_libraries(${target} PRIVATE vulkan_test_headers)
+    target_include_directories(${target} PRIVATE
+        ${REPO_ROOT}/vita3k/util/include
+        ${REPO_ROOT}/external/boost
+        ${REPO_ROOT}/external/fmt/include
+        ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/include
+        ${REPO_ROOT}/external/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include)
+endforeach()
+
 add_executable(vulkan_surface_tests VulkanSurfaceTests.cpp)
-target_compile_features(vulkan_surface_tests PRIVATE cxx_std_20)
-target_compile_definitions(vulkan_surface_tests PRIVATE VULKAN_HPP_NO_CONSTRUCTORS)
-target_include_directories(vulkan_surface_tests PRIVATE ../../../vita3k/renderer/include)
-target_link_libraries(vulkan_surface_tests PRIVATE Vulkan::Vulkan)
+target_link_libraries(vulkan_surface_tests PRIVATE vulkan_test_headers Vulkan::Vulkan ${CMAKE_DL_LIBS})
 add_test(NAME vulkan_surface_tests COMMAND vulkan_surface_tests)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME surface_cache_production_tests COMMAND ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceCacheProductionTests.py ${CMAKE_CXX_COMPILER})
+    ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceCacheProductionTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
 set_tests_properties(vulkan_surface_tests surface_cache_production_tests PROPERTIES TIMEOUT 60)

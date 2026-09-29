@@ -13,10 +13,18 @@ sudo dnf install cmake vulkan-headers vulkan-loader-devel vulkan-validation-laye
 From the repository root:
 
 ```sh
-cmake -S ios/tests/vulkan -B build-vulkan-tests -DCMAKE_BUILD_TYPE=Debug
+git submodule update --init --recursive external/VulkanMemoryAllocator-Hpp external/boost external/fmt
+cmake -S ios/tests/vulkan -B build-vulkan-tests -DCMAKE_BUILD_TYPE=Debug \
+  -DVulkan_INCLUDE_DIR="$PWD/external/VulkanMemoryAllocator-Hpp/Vulkan-Headers/include"
 cmake --build build-vulkan-tests -j 2
 ctest --test-dir build-vulkan-tests --output-on-failure
 ```
+
+The build compiles each shared Vulkan helper as the first include, followed by
+the production Vulkan/VMA wrapper. Aggregate and designated-initializer checks
+catch Vulkan-Hpp configuration differences without injecting test-only macros.
+The suite uses the pinned VMA-Hpp Vulkan headers. CI also builds and runs it
+against the headers from the pinned iOS MoltenVK package before building the IPA.
 
 The C++ test uses the production dependency and descriptor-cache helpers. It
 creates each render-pass mode on the Vulkan device with validation enabled,

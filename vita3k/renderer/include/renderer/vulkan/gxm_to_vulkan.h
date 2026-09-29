@@ -17,13 +17,7 @@
 
 #pragma once
 
-#ifdef __APPLE__
-#define VK_ENABLE_BETA_EXTENSIONS
-#endif
-#define VK_NO_PROTOTYPES
-#define VULKAN_HPP_NO_CONSTRUCTORS
-#define VULKAN_HPP_NO_SPACESHIP_OPERATOR
-#include <vulkan/vulkan.hpp>
+#include <vkutil/vulkan.h>
 
 #include <gxm/types.h>
 

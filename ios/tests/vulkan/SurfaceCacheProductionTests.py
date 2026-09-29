@@ -21,7 +21,6 @@ condition = surface[start + 4:surface.index(' {', start) - 1]
 start = surface.index('            const size_t host_stride =')
 allocation = surface[start:surface.index('            copy_buffer.init_buffer', start)]
 source = r'''
-#define VULKAN_HPP_NO_CONSTRUCTORS
 #include <renderer/vulkan/texture_descriptor_cache.h>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_format_traits.hpp>
@@ -187,6 +186,8 @@ with tempfile.TemporaryDirectory() as tmp:
     # Existing swizzle helper intentionally ignores identity/constant components.
     subprocess.run([sys.argv[1], '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Wno-switch',
                     '-I' + str(repo / 'vita3k/renderer/include'),
+                    '-I' + str(repo / 'vita3k/vkutil/include'),
+                    '-I' + sys.argv[2],
                     str(cpp), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 
