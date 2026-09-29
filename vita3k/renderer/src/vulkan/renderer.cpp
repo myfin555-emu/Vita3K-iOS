@@ -22,6 +22,7 @@
 
 #include <renderer/functions.h>
 #include <renderer/types.h>
+#include <renderer/vulkan/framebuffer_fetch.h>
 #include <renderer/vulkan/functions.h>
 #include <renderer/vulkan/state.h>
 
@@ -963,14 +964,15 @@ void VKState::late_init(const Config &cfg, const std::string_view game_id, MemSt
 
     bool use_high_accuracy = cfg.current_config.high_accuracy;
 
-    // shader interlock is more accurate but slower
-    if (features.support_shader_interlock && use_high_accuracy) {
+    bool force_subpass = false;
+#ifdef VITA3K_PLATFORM_IOS
+    force_subpass = needs_subpass_fetch_workaround(true, physical_device_properties.deviceName.data());
+#endif
+    select_framebuffer_fetch(features, use_high_accuracy, force_subpass);
+    if (force_subpass)
+        LOG_INFO("Apple A11: using subpass framebuffer fetch to avoid Metal helper-invocation compilation failure");
+    else if (features.support_shader_interlock)
         LOG_INFO("Using shader interlock for accurate framebuffer fetch emulation");
-    } else {
-        // We use subpass input to get something similar to direct fragcolor access (there is no difference for the shader)
-        features.direct_fragcolor = true;
-        features.support_shader_interlock = false;
-    }
 
     // texture viewport is faster but not entirely accurate
     if (support_standard_layout && !use_high_accuracy) {

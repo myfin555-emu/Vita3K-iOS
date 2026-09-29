@@ -53,3 +53,8 @@ add_test(NAME pvrtc_decode_tests COMMAND pvrtc_decode_tests)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME thread_wait_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ThreadWaitTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(thread_wait_tests PROPERTIES TIMEOUT 30)
+
+add_executable(framebuffer_fetch_tests FramebufferFetchTests.cpp)
+target_compile_features(framebuffer_fetch_tests PRIVATE cxx_std_17)
+target_include_directories(framebuffer_fetch_tests PRIVATE ../../vita3k/renderer/include ../../vita3k/features/include)
+add_test(NAME framebuffer_fetch_tests COMMAND framebuffer_fetch_tests)

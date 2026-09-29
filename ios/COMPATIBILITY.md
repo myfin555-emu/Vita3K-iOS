@@ -357,3 +357,28 @@ condition variable enforcing the mutex-binding rule on Linux. It covers overlapp
 module and guest waits, timed and untimed wakeups, and timeout queue removal.
 Mission entry still needs device verification. This change does not resolve the
 separate Metal `air.simd_is_helper_thread` shader rejection now visible in the log.
+
+### Apple A11 tutorial rendering and frame-time investigation
+
+The d6482d3 log confirms tutorial entry but still rejects framebuffer-fetch
+pipelines with `air.simd_is_helper_thread` during Metal compilation. Apple A11
+on iOS now selects the existing subpass-input framebuffer-fetch path instead
+of storage-image shader interlock, including with High Accuracy enabled.
+Other High Accuracy controls (such as texture viewport) retain their settings;
+other GPU models retain the previous selection. The existing shader cache
+feature mask includes interlock, so an incompatible saved cache is rebuilt.
+This is a targeted compatibility workaround; subpass feedback may be less
+accurate than ordered interlock in overlapping draws on this device.
+
+Missing minimap/blood overlay and transient stretched buff geometry still need
+image comparison on device. Pipeline rejection establishes missing draws but
+does not identify which game effect each rejected shader draws. Surface sync
+was disabled in the supplied log and has not been changed by this patch.
+
+`NGS update timing` logs now summarize calling-thread wall time (including
+scheduler locking and guest callbacks), average/maximum duration and calls over
+10 ms, once per five-second window. They do not change audio pacing, input,
+resolution or emulated timing. Compare repeated attacks with/without speech
+and note whether stalls occur only on first use. No FPS gain or resolution of
+input latency is established by host tests; the screenshots show 30 FPS in the
+lobby and about 10 FPS during effects at 1x resolution.

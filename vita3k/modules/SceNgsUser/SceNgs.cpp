@@ -24,6 +24,9 @@
 #include <util/log.h>
 #include <util/tracy.h>
 
+#include <algorithm>
+#include <chrono>
+
 TRACY_MODULE_NAME(SceNgs);
 
 struct SceNgsVolumeMatrix {
@@ -440,7 +443,29 @@ EXPORT(SceUInt32, sceNgsSystemUpdate, ngs::System *system) {
     }
 
     LOG_INFO_ONCE("First sceNgsSystemUpdate call (TID {})", thread_id);
+#ifdef VITA3K_PLATFORM_IOS
+    const auto update_start = std::chrono::steady_clock::now();
+#endif
     system->voice_scheduler.update(emuenv.kernel, emuenv.mem, thread_id);
+#ifdef VITA3K_PLATFORM_IOS
+    // Aggregate on the calling host thread; no logging or extra locks per voice.
+    // Includes scheduler lock/callback time, so this measures wall time rather
+    // than claiming all of it was spent decoding audio.
+    const auto update_end = std::chrono::steady_clock::now();
+    const auto elapsed_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count());
+    static thread_local auto window_start = update_start;
+    static thread_local uint64_t calls = 0, total_us = 0, max_us = 0, over_10ms = 0;
+    ++calls;
+    total_us += elapsed_us;
+    max_us = std::max(max_us, elapsed_us);
+    over_10ms += elapsed_us >= 10000;
+    if (update_end - window_start >= std::chrono::seconds(5)) {
+        LOG_INFO("NGS update timing: thread={} calls={} avg_us={} max_us={} over_10ms={}",
+            thread_id, calls, total_us / calls, max_us, over_10ms);
+        window_start = update_end;
+        calls = total_us = max_us = over_10ms = 0;
+    }
+#endif
 
     return SCE_NGS_OK;
 }
