@@ -378,7 +378,9 @@ void VKContext::start_render_pass(bool create_descriptor_set) {
     // update descriptor set for the whole scene with the color attachment
     vk::DescriptorImageInfo descr_color_info{
         .sampler = nullptr,
-        .imageView = current_color_view,
+        // The interlock shader performs gamma conversion itself. Its rgba8
+        // imageLoad/imageStore must use the linear view of the same allocation.
+        .imageView = state.features.support_shader_interlock ? current_color_base_image->view : current_color_view,
         .imageLayout = vk::ImageLayout::eGeneral,
     };
 

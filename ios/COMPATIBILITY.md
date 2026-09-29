@@ -577,3 +577,34 @@ The supplied captures cannot establish the remaining performance bottleneck or
 prove every black/RGB/stretched scene is fixed. Device testing on both titles
 and a native iOS build are still required; no GPU path or quality setting was
 silently relaxed for God Eater.
+
+### sRGB framebuffer fetch at the Vulkan-to-Metal boundary
+
+The 5a076de Gravity Rush capture contains `R8G8B8A8Srgb` render targets while
+shader interlock is enabled. The renderer previously used that same sRGB view
+for the shader's typed `rgba8` storage image. The shader already explicitly
+decodes/encodes sRGB around its framebuffer reads/writes. This is a format
+mismatch at the descriptor boundary, independently of whether a shader compiled.
+MoltenVK 1.4.2 binds the image view's Metal texture; it does not substitute a
+linear view here. Some Apple GPU families support sRGB writes, while other
+Vulkan devices reject sRGB storage usage outright; support for those writes
+does not make an sRGB view compatible with the shader's typed `rgba8` image.
+
+With interlock, RGBA8 color surfaces now allocate UNORM backing images. Standard
+render passes still use sRGB attachment views when the game requests gamma;
+storage descriptors use the linear base view, so shader gamma conversion occurs
+once. Attachment and sampled views restrict their inherited usage through
+`VK_KHR_maintenance2`. A device lacking this extension uses the existing input
+attachment path instead of creating incompatible storage views. Presentation
+has a separate format/swizzle cache entry, and retirement removes framebuffers
+for both linear and sRGB attachment views. This shares one allocation and does
+not add image copies, disable gamma, skip draws, or change resolution.
+
+A host Vulkan regression reproduces the old unsupported image/view usage. The
+fixed path passes validation and checks actual bytes after sRGB attachment clear,
+rgba8 storage shader read/write, and transfer readback, including alpha and
+repeated sRGB/linear target reuse. Production view selection/descriptor routing
+and retirement are also checked. These are API/color-contract checks, not an
+on-device reproduction of Gravity Rush. Black/RGB/stretched geometry and God
+Eater's dialogue FPS still require native iOS gameplay verification; no measured
+FPS improvement or guarantee of unchanged game output follows from host tests.

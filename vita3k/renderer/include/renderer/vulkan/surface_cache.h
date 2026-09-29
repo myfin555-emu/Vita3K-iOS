@@ -97,7 +97,7 @@ struct ColorSurfaceCacheInfo : public SurfaceCacheInfo {
     std::vector<CastedTexture> casted_textures;
     // use a unique_ptr for the following objects as they may not be used
 
-    // same image with a different view(swizzle) used for sampling
+    // same image with the other sRGB/linear format, identity swizzle for attachments
     vk::ImageView alternate_view = nullptr;
     // Sampling may request multiple format/swizzle combinations over the
     // lifetime of one render target. Keep those distinct from alternate_view,
@@ -203,6 +203,7 @@ private:
 
     void destroy_surface(ColorSurfaceCacheInfo &info);
     void destroy_surface(DepthStencilSurfaceCacheInfo &info);
+    vk::ImageView retrieve_color_attachment_view(ColorSurfaceCacheInfo &info, vk::Format format);
     vk::ImageView retrieve_sampled_view(ColorSurfaceCacheInfo &info, vk::Format format,
         const vk::ComponentMapping &components);
 
@@ -210,6 +211,7 @@ public:
     // when creating a mutable image, can we pass as an argument
     // the possible format used for an image view to improve performance ?
     bool support_image_format_specifier = false;
+    bool support_image_view_usage = false;
 
     // can we protect mapped memory ?
     // On Windows this causes no issue, but according to my test

@@ -99,3 +99,29 @@ dependencies. The native IPA build compiles the implementation normally.
 These tests establish correctness and operation-count changes, not device FPS
 or process RAM measurements. In particular, shader compression was already
 enabled in the iOS MoltenVK configuration and is not newly added here.
+
+## sRGB storage and presentation
+
+`vulkan_surface_tests` now also uses the production color-surface view helper
+with a Vulkan 1.0 instance and explicitly enabled `VK_KHR_maintenance2`, matching
+the renderer's extension setup. It renders a clear through an sRGB attachment,
+executes a typed rgba8 storage shader that swaps red/blue, and checks the encoded
+readback bytes and linear alpha. The same allocation is reused as sRGB, linear,
+and sRGB again; sampling/presentation views are created with restricted usage.
+No game shader or Metal execution is implied. `--legacy-srgb-storage` reproduces
+the old image/view creation on lavapipe and intentionally fails validation.
+
+The small compute shader is provided as SPIR-V assembly and embedded words so
+the suite needs no shader compiler package. To verify/rebuild its payload:
+
+```sh
+spirv-as --target-env vulkan1.0 ios/tests/vulkan/SrgbStorageRoundTrip.spvasm -o /tmp/srgb-roundtrip.spv
+spirv-val --target-env vulkan1.0 /tmp/srgb-roundtrip.spv
+```
+
+`SrgbStorageRoundTrip.h` contains the resulting little-endian uint32 words.
+`surface_view_routing_tests` compiles the actual attachment/sample view cache,
+presentation selection, descriptor image selection and swizzle function with a
+recording Vulkan creation boundary. It checks that sRGB, raw storage and
+presentation swizzle cannot alias the wrong view and repeated use is cached.
+The retirement test additionally checks both attachment view framebuffer keys.

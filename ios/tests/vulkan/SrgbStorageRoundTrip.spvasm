@@ -1,0 +1,28 @@
+; Raw rgba8 framebuffer-fetch round trip: read (0,0), swap red/blue, write back.
+; Generated header avoids adding shader compiler dependencies to the header CI.
+; Regenerate with spirv-as --target-env vulkan1.0, then unpack little-endian uint32 words.
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %main "main"
+OpExecutionMode %main LocalSize 1 1 1
+OpDecorate %target DescriptorSet 0
+OpDecorate %target Binding 0
+%void = OpTypeVoid
+%fn = OpTypeFunction %void
+%float = OpTypeFloat 32
+%vec4 = OpTypeVector %float 4
+%int = OpTypeInt 32 1
+%ivec2 = OpTypeVector %int 2
+%zero = OpConstant %int 0
+%coord = OpConstantComposite %ivec2 %zero %zero
+%image = OpTypeImage %float 2D 0 0 0 2 Rgba8
+%ptr = OpTypePointer UniformConstant %image
+%target = OpVariable %ptr UniformConstant
+%main = OpFunction %void None %fn
+%entry = OpLabel
+%loaded = OpLoad %image %target
+%pixel = OpImageRead %vec4 %loaded %coord
+%swapped = OpVectorShuffle %vec4 %pixel %pixel 2 1 0 3
+OpImageWrite %loaded %coord %swapped
+OpReturn
+OpFunctionEnd

@@ -67,7 +67,7 @@ struct ColorSurfaceCacheInfo {
     struct View { int view = 1; };
     std::vector<Cast> casted_textures;
     std::vector<View> sampled_views;
-    int alternate_view = 1;
+    int alternate_view = 2;
     Image texture;
     std::unique_ptr<Image> blit_image = std::make_unique<Image>();
     std::unique_ptr<Buffer> copy_buffer = std::make_unique<Buffer>();
@@ -117,7 +117,8 @@ struct VKSurfaceCache {
     State &state;
     void destroy_surface(ColorSurfaceCacheInfo &info);
     void clear_surfaces_changed() {}
-    void destroy_framebuffers(int) {}
+    std::vector<int> retired_framebuffer_views{};
+    void destroy_framebuffers(int view) { retired_framebuffer_views.push_back(view); }
     void queue_post_surface_sync(ColorSurfaceCacheInfo *surface);
     void perform_post_surface_sync(const MemState &, ColorSurfaceCacheInfo *surface) {
         assert(surface->copy_buffer && surface->copy_buffer->live);
@@ -189,6 +190,7 @@ int main() {
 '''
 if not baseline:
     code += r'''
+    assert((state.surface_cache.retired_framebuffer_views == std::vector<int>{2, 1}));
     MemState mem;
     VKContext context{state};
     std::promise<void> gpu;

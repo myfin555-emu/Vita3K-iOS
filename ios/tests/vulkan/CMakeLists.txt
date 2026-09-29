@@ -13,7 +13,8 @@ target_include_directories(vulkan_test_headers INTERFACE
 
 # Each header must configure Vulkan-Hpp correctly when it is the first include.
 # Do not supply VULKAN_HPP_* definitions here: doing so masked an iOS build failure.
-foreach(header IN ITEMS renderer/vulkan/surface_readback.h
+foreach(header IN ITEMS renderer/vulkan/color_surface.h
+                        renderer/vulkan/surface_readback.h
                         renderer/vulkan/frame_descriptor.h
                         renderer/vulkan/render_pass_dependencies.h
                         renderer/vulkan/texture_descriptor_cache.h
@@ -91,3 +92,7 @@ endif()
 add_test(NAME pipeline_readiness_tests COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/PipelineReadinessTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
 set_tests_properties(pipeline_readiness_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME surface_view_routing_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceViewRoutingTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
+set_tests_properties(surface_view_routing_tests PROPERTIES TIMEOUT 30)

@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <renderer/vulkan/color_surface.h>
 #include <renderer/vulkan/surface_cache.h>
 
 #include <gxm/functions.h>
@@ -146,10 +147,24 @@ void VKSurfaceCache::destroy_surface(ColorSurfaceCacheInfo &info) {
         destroy_queue.add(sampled_view.view);
     info.sampled_views.clear();
 
+    destroy_framebuffers(info.alternate_view);
     destroy_queue.add(info.alternate_view);
 
     destroy_framebuffers(info.texture.view);
     destroy_queue.add_image(info.texture);
+}
+
+vk::ImageView VKSurfaceCache::retrieve_color_attachment_view(ColorSurfaceCacheInfo &info, const vk::Format format) {
+    if (format == info.texture.format)
+        return info.texture.view;
+
+    if (!info.alternate_view) {
+        info.alternate_view = create_color_surface_view(state.device, info.texture.image,
+            format, vkutil::default_comp_mapping,
+            vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment,
+            support_image_view_usage);
+    }
+    return info.alternate_view;
 }
 
 vk::ImageView VKSurfaceCache::retrieve_sampled_view(ColorSurfaceCacheInfo &info, const vk::Format format,
@@ -161,14 +176,8 @@ vk::ImageView VKSurfaceCache::retrieve_sampled_view(ColorSurfaceCacheInfo &info,
     if (existing != info.sampled_views.end())
         return existing->view;
 
-    vk::ImageViewCreateInfo view_info{
-        .image = info.texture.image,
-        .viewType = vk::ImageViewType::e2D,
-        .format = format,
-        .components = components,
-        .subresourceRange = vkutil::color_subresource_range
-    };
-    const vk::ImageView view = state.device.createImageView(view_info);
+    const vk::ImageView view = create_color_surface_view(state.device, info.texture.image,
+        format, components, vk::ImageUsageFlagBits::eSampled, support_image_view_usage);
     info.sampled_views.push_back({ view, format, components });
     LOG_DEBUG("Created distinct sampled surface view: format={} swizzle={}/{}/{}/{} count={}",
         vk::to_string(format), static_cast<int>(components.r), static_cast<int>(components.g),
@@ -381,23 +390,7 @@ SurfaceRetrieveResult VKSurfaceCache::retrieve_color_surface_for_framebuffer(Mem
             state.pipeline_cache.can_use_deferred_compilation = context->frame_timestamp - info.last_frame_rendered < big_delay_between_frames;
             info.last_frame_rendered = context->frame_timestamp;
 
-            if (vk_format == info.texture.format) {
-                return { info.texture.view, &info.texture };
-            } else {
-                // using both srgb/linear
-                if (!info.alternate_view) {
-                    vk::ImageViewCreateInfo view_info{
-                        .image = info.texture.image,
-                        .viewType = vk::ImageViewType::e2D,
-                        .format = vk_format,
-                        .components = vkutil::default_comp_mapping,
-                        .subresourceRange = vkutil::color_subresource_range
-                    };
-                    info.alternate_view = state.device.createImageView(view_info);
-                }
-
-                return { info.alternate_view, &info.texture };
-            }
+            return { retrieve_color_attachment_view(info, vk_format), &info.texture };
         }
     }
 
@@ -429,7 +422,7 @@ SurfaceRetrieveResult VKSurfaceCache::retrieve_color_surface_for_framebuffer(Mem
     vkutil::Image &image = info_added.texture;
     image.width = width;
     image.height = height;
-    image.format = vk_format;
+    image.format = color_surface_image_format(vk_format, state.features.support_shader_interlock);
     image.layout = vkutil::ImageLayout::Undefined;
 
     // we might have to create a non-srgb/linear view later if this surface is used for presentation
@@ -476,7 +469,7 @@ SurfaceRetrieveResult VKSurfaceCache::retrieve_color_surface_for_framebuffer(Mem
     // it's not impossible that this surface will be rendered once and only used after, so do not skip any shader on it
     state.pipeline_cache.can_use_deferred_compilation = false;
 
-    return { info_added.texture.view, &info_added.texture };
+    return { retrieve_color_attachment_view(info_added, vk_format), &info_added.texture };
 }
 
 std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_texture(const SceGxmTexture &texture, const SceGxmColorBaseFormat base_format, TextureViewport *texture_viewport) {
@@ -1656,19 +1649,10 @@ vk::ImageView VKSurfaceCache::sourcing_color_surface_for_presentation(Ptr<const 
             if (info.swizzle == vkutil::rgba_mapping && info.texture.format == vk::Format::eR8G8B8A8Unorm)
                 return info.texture.view;
 
-            if (!info.alternate_view) {
-                // create a view with the right swizzle and without gamma correction
-                vk::ImageViewCreateInfo view_info{
-                    .image = info.texture.image,
-                    .viewType = vk::ImageViewType::e2D,
-                    .format = vk::Format::eR8G8B8A8Unorm,
-                    .components = vkutil::color_to_texture_swizzle(info.swizzle, vkutil::rgba_mapping),
-                    .subresourceRange = vkutil::color_subresource_range
-                };
-                info.alternate_view = state.device.createImageView(view_info);
-            }
-
-            return info.alternate_view;
+            // Presentation needs encoded bytes and its own swizzle, not the
+            // sRGB attachment view cached in alternate_view.
+            return retrieve_sampled_view(info, vk::Format::eR8G8B8A8Unorm,
+                vkutil::color_to_texture_swizzle(info.swizzle, vkutil::rgba_mapping));
         }
     }
 

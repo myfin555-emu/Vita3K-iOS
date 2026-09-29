@@ -71,7 +71,9 @@ void dependency_coverage() {
     require(bool(surface_transfer_barrier().srcAccessMask & vk::AccessFlagBits::eShaderWrite), "readback excludes fetch writes");
 }
 
-int main() {
+#include "SrgbSurfaceTests.h"
+
+int main(int argc, char **argv) {
     VULKAN_HPP_DEFAULT_DISPATCHER.init();
     descriptor_reuse();
     dependency_coverage();
@@ -79,7 +81,7 @@ int main() {
     const char *extension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     VkValidationFeatureEnableEXT sync = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
     VkValidationFeaturesEXT validation{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT, nullptr, 1, &sync, 0, nullptr};
-    vk::ApplicationInfo app{.pApplicationName = "surface-regressions", .apiVersion = VK_API_VERSION_1_1};
+    vk::ApplicationInfo app{.pApplicationName = "surface-regressions", .apiVersion = VK_API_VERSION_1_0};
     vk::InstanceCreateInfo info{.pNext = &validation, .pApplicationInfo = &app,
         .enabledLayerCount = 1, .ppEnabledLayerNames = &layer,
         .enabledExtensionCount = 1, .ppEnabledExtensionNames = &extension};
@@ -102,9 +104,12 @@ int main() {
     require(family < queues.size(), "no graphics queue");
     const float priority = 1.0f;
     vk::DeviceQueueCreateInfo queue_info{.queueFamilyIndex = family, .queueCount = 1, .pQueuePriorities = &priority};
-    vk::DeviceCreateInfo device_info{.queueCreateInfoCount = 1, .pQueueCreateInfos = &queue_info};
+    const char *maintenance2 = VK_KHR_MAINTENANCE_2_EXTENSION_NAME;
+    vk::DeviceCreateInfo device_info{.queueCreateInfoCount = 1, .pQueueCreateInfos = &queue_info,
+        .enabledExtensionCount = 1, .ppEnabledExtensionNames = &maintenance2};
     const auto device = gpu.createDevice(device_info);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
+    srgb_storage_roundtrip(device, gpu, family, argc > 1 && std::strcmp(argv[1], "--legacy-srgb-storage") == 0);
     // Validate every production render-pass mode and its stage/access masks.
     for (bool interlock : {false, true}) {
         for (bool no_color : {false, true}) {

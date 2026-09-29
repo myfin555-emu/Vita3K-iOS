@@ -663,6 +663,8 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
             { vk::KHRDedicatedAllocationExtensionName, &support_dedicated_allocations },
             // used to tell the driver this application is high priority
             { vk::EXTGlobalPriorityExtensionName, &support_global_priority },
+            // sRGB attachment/sample views must exclude the image's storage usage
+            { vk::KHRMaintenance2ExtensionName, &surface_cache.support_image_view_usage },
             // can be used to specify which format will be used by mutable images
             { vk::KHRImageFormatListExtensionName, &surface_cache.support_image_format_specifier },
             { vk::KHRExternalMemoryExtensionName, &temp_bool },
@@ -794,6 +796,12 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
             support_shader_interlock = false;
         }
 
+        // This Vulkan 1.0 instance needs maintenance2 enabled explicitly for
+        // VkImageViewUsageCreateInfo. Never create an sRGB storage view as a fallback.
+        if (support_shader_interlock && !surface_cache.support_image_view_usage) {
+            LOG_WARN("Shader interlock requires VK_KHR_maintenance2 for linear storage and sRGB attachment views");
+            support_shader_interlock = false;
+        }
         support_shader_interlock &= static_cast<bool>(physical_device_features.fragmentStoresAndAtomics);
         if (support_shader_interlock) {
             auto props = physical_device.getFeatures2KHR<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT>();
