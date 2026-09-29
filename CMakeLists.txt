@@ -69,6 +69,13 @@ if(NOT MSVC)
     string(APPEND CMAKE_CXX_FLAGS_MINSIZEREL " -Os -DNDEBUG")
 endif()
 
+# Apply symbol visibility across all platforms in Release builds to reduce binary size
+# and enable better inlining/optimization opportunities
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT MSVC)
+    string(APPEND CMAKE_C_FLAGS_RELEASE " -fvisibility=hidden")
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -fvisibility=hidden -fvisibility-inlines-hidden")
+endif()
+
 # workaround for SDL due to cmake bug
 # https://github.com/libsdl-org/SDL/issues/6454
 # https://gitlab.kitware.com/cmake/cmake/-/issues/24104
