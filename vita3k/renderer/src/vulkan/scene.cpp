@@ -122,7 +122,7 @@ static vk::DescriptorSet retrieve_descriptor(VKContext &context, bool is_vertex,
     descriptor_pool_info.setPoolSizes(pool_size);
 
     vk::DescriptorPool descriptor_pool = state.device.createDescriptorPool(descriptor_pool_info);
-    frame_descriptor.pools.push_back({ descriptor_pool, state.frame().frame_timestamp });
+    frame_descriptor.pools.push_back({ descriptor_pool, context.frame_timestamp });
 
     // allocate all the descriptor sets
     const vk::DescriptorSetLayout set_layout = is_vertex ? state.pipeline_cache.vertex_textures_layout[textures_count] : state.pipeline_cache.fragment_textures_layout[textures_count];
