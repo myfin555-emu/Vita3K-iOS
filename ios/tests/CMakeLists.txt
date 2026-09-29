@@ -39,3 +39,8 @@ add_executable(ime_native_input_tests IMENativeInputTests.cpp)
 target_compile_features(ime_native_input_tests PRIVATE cxx_std_17)
 target_include_directories(ime_native_input_tests PRIVATE ../../vita3k/ime/include)
 add_test(NAME ime_native_input_tests COMMAND ime_native_input_tests)
+
+add_executable(ime_guest_event_tests IMEGuestEventTests.cpp)
+target_compile_features(ime_guest_event_tests PRIVATE cxx_std_17)
+target_include_directories(ime_guest_event_tests PRIVATE ../../vita3k/ime/include ../../vita3k/mem/include ../../vita3k/util/include)
+add_test(NAME ime_guest_event_tests COMMAND ime_guest_event_tests)

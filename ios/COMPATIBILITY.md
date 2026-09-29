@@ -151,8 +151,11 @@ returned through the guest APIs, not injected as simulated controller presses.
 `ios/src/IOSKeyboard.mm` implements that boundary using a native `UITextView`:
 
 - Existing text, caret, keyboard type, return label and editor height come
-  from the game's request. An opaque white UIKit editor with black text follows
-  the system keyboard layout guide, in portrait and landscape. On iOS the GPU
+  from the game's request. A native input screen with an opaque white backdrop
+  replaces the guest image while the IME session is active, including the
+  corrupted guest textbox. Its black-text editor follows the keyboard layout
+  guide in portrait and landscape. This substitutes the input UI; it does not
+  repair unrelated game textures or shaders. On iOS the GPU
   IME dialog and its competing controller input handler are suppressed; other
   common dialogs continue using the renderer.
 - iOS owns composition, selection, paste, deletion and hardware keyboard input.
@@ -165,10 +168,17 @@ returned through the guest APIs, not injected as simulated controller presses.
   UIKit frame. Cancel queues `PRESS_CLOSE` and respects dialogMode.
 - Return confirms even for multiline requests; pasting multiline text is still
   supported. Selecting a marked-text composition candidate does not confirm.
-- Confirmation/cancellation restores the controller and keeps the keyboard
-  dismissed for the current session, including while guest callbacks run.
-  Only a new game IME session reopens it; an empty event slot or a text/caret
-  callback does not imply a request to start editing again.
+- Confirmation/cancellation dismisses the system keyboard but keeps the native
+  input screen visible until the game closes its IME request. It says "Waiting
+  for game" and offers explicit Edit after the terminal callback returns, so a
+  game that rejects a name does not leave the editor permanently disabled.
+  An empty event slot never automatically reopens the system keyboard.
+- `OPEN` is dispatched once before text/terminal callbacks; an empty queue is
+  represented separately. Text edit indices and length changes are computed
+  against the last guest-delivered text, including coalesced typing/deletions.
+  The guest input buffer receives a UTF-16 terminator before callback entry.
+- Logs include the session, event IDs, text lengths, callback completion and
+  guest close/result acknowledgement, without recording the typed text.
 - The controls disappear while editing. Session generations reject callbacks
   belonging to a previous keyboard request; game exit removes the editor
   before guest state is destroyed.
@@ -200,7 +210,9 @@ Linux cannot compile UIKit/SwiftUI or validate device JIT. Before release, run:
    the final typed character reaches the game before Enter. Verify the white
    editor is readable in light/dark mode and both orientations.
 5. Test repeated Enter in a game that keeps SceIme open: send exactly one
-   confirmation and keep the keyboard closed. Open another field (for example,
+   confirmation and keep the system keyboard closed. Verify the native screen
+   stays visible until guest close; Edit must wait for callback completion.
+   Open another field (for example,
    Name then Codename in God Eater) and confirm it gets a fresh working editor.
    Check game-driven text/caret changes during editing, game abort while composing,
    background/foreground, and game exit while the keyboard is shown.

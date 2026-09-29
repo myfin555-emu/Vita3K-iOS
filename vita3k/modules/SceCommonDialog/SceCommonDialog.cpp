@@ -196,6 +196,7 @@ EXPORT(int, sceImeDialogGetResult, SceImeDialogResult *result) {
 
     result->result = emuenv.common_dialog.result;
     result->button = emuenv.common_dialog.ime.status;
+    LOG_INFO("IME dialog result read by guest: result={} button={}", result->result, result->button);
     return 0;
 }
 
@@ -239,6 +240,8 @@ EXPORT(int, sceImeDialogInit, const Ptr<SceImeDialogParam> param) {
         ++emuenv.ime.generation;
         emuenv.ime.native_input.reset();
         emuenv.ime.str = text;
+        emuenv.ime.delivered_text = text;
+        LOG_INFO("IME dialog open: session={} max_length={} initial_length={}", emuenv.ime.generation, p->maxTextLength, text.size());
         emuenv.ime.param.type = p->type;
         emuenv.ime.param.option = p->option;
         emuenv.ime.param.enterLabel = p->enterLabel;
@@ -275,6 +278,8 @@ EXPORT(int, sceImeDialogTerm) {
         std::lock_guard lock2(emuenv.ime.mutex);
         emuenv.ime.native_input.reset();
         emuenv.ime.str.clear();
+        emuenv.ime.delivered_text.clear();
+        LOG_INFO("IME dialog closed by guest: session={}", emuenv.ime.generation);
         emuenv.ime.caretIndex = 0;
         emuenv.ime.edit_text = {};
         emuenv.ime.event_id = SCE_IME_EVENT_OPEN;

@@ -3,6 +3,7 @@
 #include <emuenv/state.h>
 #include <ime/state.h>
 #include <ime/text.h>
+#include <util/log.h>
 #include <util/string_utils.h>
 #include <vita3k_ios/IOSKeyboard.h>
 #include <vita3k_ios/VirtualController.h>
@@ -33,17 +34,19 @@ NSString *native_text(const std::u16string &value) {
 @property (nonatomic) EmuEnvState *environment;
 @property (nonatomic) uint64_t generation;
 @property (nonatomic) BOOL dialog;
-@property (nonatomic) BOOL multiline;
 @property (nonatomic) BOOL cancelable;
 @property (nonatomic) BOOL updating;
 @property (nonatomic) BOOL finished;
+@property (nonatomic, strong) UIView *backdrop;
 @property (nonatomic, strong) UIView *panel;
+@property (nonatomic, strong) UIButton *confirmButton;
 @property (nonatomic, strong) UITextView *editor;
 @property (nonatomic, strong) UILabel *heading;
 @property (nonatomic, strong) UIButton *cancelButton;
 - (void)publishText;
 - (void)submit;
 - (void)cancel;
+- (void)confirmOrEdit;
 @end
 
 @implementation Vita3KKeyboard
@@ -93,17 +96,50 @@ NSString *native_text(const std::u16string &value) {
     }
     return YES;
 }
+- (void)confirmOrEdit {
+    if (!self.finished) {
+        [self submit];
+        return;
+    }
+    if (!self.environment || self.dialog)
+        return;
+    {
+        auto &env = *self.environment;
+        std::lock_guard dialogLock(env.common_dialog.mutex);
+        std::lock_guard imeLock(env.ime.mutex);
+        if (![self matchesSession] || !env.ime.native_input.resume())
+            return;
+    }
+    self.finished = NO;
+    self.editor.editable = YES;
+    self.editor.userInteractionEnabled = YES;
+    self.editor.delegate = self;
+    self.heading.text = self.editor.accessibilityLabel;
+    [self.confirmButton setTitle:@"Confirm" forState:UIControlStateNormal];
+    self.cancelButton.hidden = !self.cancelable;
+    [self.editor becomeFirstResponder];
+}
 - (void)submit {
     if (self.finished || !self.environment)
         return;
     [self.editor unmarkText];
-    [self publishText];
+    auto finalText = utf16(self.editor.text);
+    const auto finalCaret = self.editor.selectedRange.location;
     {
         auto &env = *self.environment;
         std::lock_guard dialogLock(env.common_dialog.mutex);
         std::lock_guard imeLock(env.ime.mutex);
         if (![self matchesSession])
             return;
+        finalText.resize(ime::text_length(finalText, env.ime.param.maxTextLength));
+        const auto caret = static_cast<uint32_t>(ime::text_length(finalText, finalCaret));
+        if (finalText != env.ime.str || caret != env.ime.edit_text.caretIndex)
+            env.ime.event_id = SCE_IME_EVENT_UPDATE_TEXT;
+        env.ime.str = finalText;
+        env.ime.caretIndex = env.ime.edit_text.caretIndex = caret;
+        env.ime.edit_text.preeditIndex = caret;
+        env.ime.edit_text.preeditLength = 0;
+        LOG_INFO("Native IME confirm: session={} dialog={} length={}", self.generation, self.dialog != NO, finalText.size());
         if (self.dialog) {
             auto &dialog = env.common_dialog;
             const auto length = ime::text_length(env.ime.str, dialog.ime.max_length);
@@ -124,8 +160,12 @@ NSString *native_text(const std::u16string &value) {
     self.finished = YES;
     self.editor.delegate = nil;
     [self.editor resignFirstResponder];
-    self.panel.hidden = YES;
-    vita3k_ios_show_virtual_controller();
+    self.editor.editable = NO;
+    self.editor.userInteractionEnabled = NO;
+    self.heading.text = @"Waiting for game";
+    self.confirmButton.enabled = NO;
+    [self.confirmButton setTitle:@"Edit" forState:UIControlStateNormal];
+    self.cancelButton.hidden = YES;
 }
 - (void)cancel {
     if (!self.cancelable || self.finished || !self.environment)
@@ -142,13 +182,18 @@ NSString *native_text(const std::u16string &value) {
             env.common_dialog.status = SCE_COMMON_DIALOG_STATUS_FINISHED;
         } else {
             env.ime.native_input.submit(SCE_IME_EVENT_PRESS_CLOSE);
+            LOG_INFO("Native IME cancel: session={}", self.generation);
         }
     }
     self.finished = YES;
     self.editor.delegate = nil;
     [self.editor resignFirstResponder];
-    self.panel.hidden = YES;
-    vita3k_ios_show_virtual_controller();
+    self.editor.editable = NO;
+    self.editor.userInteractionEnabled = NO;
+    self.heading.text = @"Waiting for game";
+    self.confirmButton.enabled = NO;
+    [self.confirmButton setTitle:@"Edit" forState:UIControlStateNormal];
+    self.cancelButton.hidden = YES;
 }
 @end
 
@@ -161,13 +206,13 @@ void vita3k_ios_close_keyboard() {
     keyboard.editor.delegate = nil;
     // Dismiss immediately; let UIKit deliver hide notifications on the normal run loop.
     [keyboard.editor resignFirstResponder];
-    [keyboard.panel removeFromSuperview];
+    [keyboard.backdrop removeFromSuperview];
     keyboard = nil;
     vita3k_ios_show_virtual_controller();
 }
 
 void vita3k_ios_update_keyboard(EmuEnvState &env) {
-    bool active, isDialog, multiline, cancelable, dismissed;
+    bool active, isDialog, multiline, cancelable, dismissed, pending;
     uint64_t generation;
     std::u16string text;
     uint32_t caret, type, enterLabel;
@@ -186,6 +231,7 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
         enterLabel = env.ime.param.enterLabel;
         title = isDialog ? [NSString stringWithUTF8String:env.common_dialog.ime.title] : @"Game text input";
         dismissed = !isDialog && env.ime.native_input.dismissed();
+        pending = env.ime.native_input.pending();
     }
     if (!active) {
         vita3k_ios_close_keyboard();
@@ -193,10 +239,19 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     }
     if (keyboard && (keyboard.generation != generation || keyboard.dialog != isDialog))
         vita3k_ios_close_keyboard();
-    // Keep the submitted session hidden even while the callback runs or the
+    // Keep the system keyboard dismissed while the callback runs or the
     // game keeps SceIme open. A later close/open increments generation.
-    if (dismissed)
+    if (dismissed) {
+        // Dismissing the system keyboard is not proof that the game accepted
+        // the name. Keep an opaque native input screen until the guest closes
+        // IME, with explicit editing available once its callback returns.
+        if (keyboard) {
+            keyboard.heading.text = @"Waiting for game";
+            keyboard.confirmButton.enabled = !pending;
+            [keyboard.backdrop.superview bringSubviewToFront:keyboard.backdrop];
+        }
         return;
+    }
     if (keyboard) {
         if (keyboard.finished) {
             [keyboard.editor resignFirstResponder];
@@ -210,7 +265,7 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
         }
         if (!keyboard.finished) {
             keyboard.panel.hidden = NO;
-            [keyboard.panel.superview bringSubviewToFront:keyboard.panel];
+            [keyboard.backdrop.superview bringSubviewToFront:keyboard.backdrop];
             if (!keyboard.editor.isFirstResponder && UIApplication.sharedApplication.applicationState == UIApplicationStateActive)
                 [keyboard.editor becomeFirstResponder];
         }
@@ -232,8 +287,12 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     keyboard.environment = &env;
     keyboard.generation = generation;
     keyboard.dialog = isDialog;
-    keyboard.multiline = multiline;
     keyboard.cancelable = cancelable;
+    LOG_INFO("Native IME show: session={} dialog={} length={}", generation, isDialog, text.size());
+    keyboard.backdrop = [UIView new];
+    keyboard.backdrop.backgroundColor = UIColor.whiteColor;
+    keyboard.backdrop.frame = window.bounds;
+    keyboard.backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     keyboard.panel = [UIView new];
     // Opaque UIKit text replaces the GPU-rendered IME card on iOS.
     keyboard.panel.backgroundColor = UIColor.whiteColor;
@@ -278,9 +337,10 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     keyboard.cancelButton.hidden = !cancelable;
     [keyboard.cancelButton addTarget:keyboard action:@selector(cancel) forControlEvents:UIControlEventTouchUpInside];
     UIButton *done = [UIButton buttonWithType:UIButtonTypeSystem];
+    keyboard.confirmButton = done;
     done.accessibilityIdentifier = @"vita3k.ime.confirm";
     [done setTitle:@"Confirm" forState:UIControlStateNormal];
-    [done addTarget:keyboard action:@selector(submit) forControlEvents:UIControlEventTouchUpInside];
+    [done addTarget:keyboard action:@selector(confirmOrEdit) forControlEvents:UIControlEventTouchUpInside];
     UIStackView *bar = [[UIStackView alloc] initWithArrangedSubviews:@[ keyboard.cancelButton, keyboard.heading, done ]];
     bar.spacing = 12;
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[ bar, keyboard.editor ]];
@@ -288,8 +348,9 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
     stack.spacing = 8;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [keyboard.panel addSubview:stack];
-    [window addSubview:keyboard.panel];
-    [window bringSubviewToFront:keyboard.panel];
+    [keyboard.backdrop addSubview:keyboard.panel];
+    [window addSubview:keyboard.backdrop];
+    [window bringSubviewToFront:keyboard.backdrop];
     [NSLayoutConstraint activateConstraints:@[
         [keyboard.panel.leadingAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.leadingAnchor
                                                      constant:12],

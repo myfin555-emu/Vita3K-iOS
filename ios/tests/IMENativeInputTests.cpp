@@ -6,6 +6,7 @@
 #include <vector>
 
 namespace {
+constexpr uint32_t no_event = UINT32_MAX;
 void require(bool condition, const char *message) {
     if (!condition) {
         std::cerr << message << '\n';
@@ -24,17 +25,22 @@ struct Guest {
 
     uint32_t update() {
         const auto event = input.take_event(edit);
-        if (event != SCE_IME_EVENT_OPEN) {
+        if (event) {
             guest_buffer = text;
-            events.push_back(event);
+            events.push_back(*event);
+            input.callback_completed(*event);
         }
-        return event;
+        return event.value_or(no_event);
     }
 };
 } // namespace
 
 int main() {
     Guest guest;
+    guest.input.begin();
+    require(guest.update() == SCE_IME_EVENT_OPEN, "OPEN must be delivered as a real guest event");
+    require(guest.update() == no_event, "OPEN is not the idle queue sentinel");
+    guest.events.clear();
     guest.text = u"ชื่อ\U0001F600";
     guest.edit = SCE_IME_EVENT_UPDATE_TEXT;
     require(guest.input.submit(SCE_IME_EVENT_PRESS_ENTER), "first confirmation accepted");
@@ -51,11 +57,10 @@ int main() {
     require(guest.input.dismissed(), "callback consumption does not reopen keyboard");
     require(guest.update() == SCE_IME_EVENT_UPDATE_TEXT, "preserve subsequent guest edits");
     for (int frame = 0; frame < 120; ++frame) {
-        require(guest.update() == SCE_IME_EVENT_OPEN, "no duplicate terminal callbacks");
+        require(guest.update() == no_event, "no duplicate terminal callbacks");
         require(guest.input.dismissed(), "idle game frames do not reopen a submitted session");
     }
-    require(guest.events == std::vector<uint32_t>{SCE_IME_EVENT_UPDATE_TEXT,
-                               SCE_IME_EVENT_PRESS_ENTER, SCE_IME_EVENT_UPDATE_TEXT},
+    require(guest.events == std::vector<uint32_t>{ SCE_IME_EVENT_UPDATE_TEXT, SCE_IME_EVENT_PRESS_ENTER, SCE_IME_EVENT_UPDATE_TEXT },
         "expected callback sequence");
 
     // Opening another field starts an independently editable session.
@@ -75,17 +80,30 @@ int main() {
     guest.input.reset();
     guest.input.submit(SCE_IME_EVENT_PRESS_ENTER);
     guest.input.reset();
-    require(guest.update() == SCE_IME_EVENT_OPEN, "old confirmation cannot leak into new session");
+    require(guest.update() == no_event, "old confirmation cannot leak into new session");
     require(!guest.input.submit(SCE_IME_EVENT_UPDATE_TEXT), "only terminal actions can dismiss");
     require(!guest.input.dismissed(), "invalid action leaves editing enabled");
     guest.edit = SCE_IME_EVENT_UPDATE_TEXT;
     require(guest.update() == SCE_IME_EVENT_UPDATE_TEXT, "ordinary editing still works");
 
-    for (const auto key : {u"\n", u"\r", u"\r\n"}) {
+    for (const auto key : { u"\n", u"\r", u"\r\n" }) {
         require(ime::is_submit_key(key, false), "Return and Enter confirm");
         require(!ime::is_submit_key(key, true), "composition candidate selection stays in UIKit");
     }
-    for (const auto text : {u"", u"name", u"first\nlast", u"ชื่อ", u"\U0001F600"})
+    for (const auto text : { u"", u"name", u"first\nlast", u"ชื่อ", u"\U0001F600" })
         require(!ime::is_submit_key(text, false), "typing, paste and deletion are not confirmations");
+    guest.input.begin();
+    guest.edit = SCE_IME_EVENT_UPDATE_TEXT;
+    guest.input.submit(SCE_IME_EVENT_PRESS_ENTER);
+    require(!guest.input.resume(), "cannot edit over queued confirmation");
+    require(guest.update() == SCE_IME_EVENT_OPEN, "early typing cannot overwrite OPEN");
+    require(guest.update() == SCE_IME_EVENT_UPDATE_TEXT, "early edit follows OPEN");
+    require(guest.input.take_event(guest.edit) == SCE_IME_EVENT_PRESS_ENTER, "terminal selected");
+    require(!guest.input.resume(), "cannot edit while callback is still executing");
+    guest.input.callback_completed(SCE_IME_EVENT_PRESS_ENTER);
+    require(guest.input.dismissed(), "callback return alone does not reopen");
+    require(guest.input.resume(), "explicit Edit can resume a session the game keeps open");
+    require(!guest.input.dismissed(), "explicit edit restores input");
+    require(guest.update() == no_event, "resume does not fabricate another OPEN");
     return EXIT_SUCCESS;
 }
