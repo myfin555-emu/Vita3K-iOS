@@ -326,6 +326,9 @@ static void bind_vertex_streams(VKContext &context, MemState &mem, uint32_t inst
 
 void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format,
     Ptr<void> indices, size_t count, uint32_t instance_count, MemState &mem, const Config &config) {
+#ifdef VITA3K_PLATFORM_IOS
+    ++context.diagnostic_draws;
+#endif
     void *indices_ptr = indices.get(mem);
 
     context.check_for_macroblock_change(true);
@@ -339,6 +342,34 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
         // update the render pass to load and store the depth and stencil
         context.current_render_pass = context.state.pipeline_cache.retrieve_render_pass(context.current_color_format, true, true, !context.record.color_surface.data);
         context.is_first_scene_draw = false;
+    }
+
+    // Resolve first so skipped, unqueried draws do not split render passes.
+    if (context.refresh_pipeline || type != context.last_primitive) {
+        context.refresh_pipeline = false;
+        context.last_primitive = type;
+
+        // We don't want to defer cases where we draw a whole quad over the screen as these draws could be necessary
+        // to be able to see anything
+        bool can_be_whole_quad = instance_count == 1 && count <= 6;
+        vk::Pipeline new_pipeline = context.state.pipeline_cache.retrieve_pipeline(context, type, !can_be_whole_quad, mem);
+
+        if (new_pipeline != context.current_pipeline) {
+            context.current_pipeline = new_pipeline;
+
+            if (new_pipeline != nullptr)
+                context.render_cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, context.current_pipeline);
+        }
+    }
+
+    // can happen with asynchronous pipeline compilation
+    if (context.current_pipeline == nullptr) {
+#ifdef VITA3K_PLATFORM_IOS
+        ++context.diagnostic_skipped_draws;
+#endif
+        // A visibility query still needs its empty result recorded below.
+        if (context.current_visibility_buffer == nullptr || context.current_query_idx == -1)
+            return;
     }
 
     const SceGxmFragmentProgram &gxm_fragment_program = *context.record.fragment_program.get(mem);
@@ -359,6 +390,9 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
             vk::DependencyFlagBits::eByRegion, {}, {}, barrier);
     } else if (context.state.features.support_shader_interlock
         && fragment_program_gxp.is_frag_color_used() != context.last_draw_was_framebuffer_fetch) {
+#ifdef VITA3K_PLATFORM_IOS
+        ++context.diagnostic_fetch_switches;
+#endif
         // restart the render pass to act as a barrier
         context.render_cmd.endRenderPass();
 
@@ -388,25 +422,6 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
         context.is_in_query = true;
     }
 
-    // do we need to check for a pipeline change?
-    if (context.refresh_pipeline || type != context.last_primitive) {
-        context.refresh_pipeline = false;
-        context.last_primitive = type;
-
-        // We don't want to defer cases where we draw a whole quad over the screen as these draws could be necessary
-        // to be able to see anything
-        bool can_be_whole_quad = instance_count == 1 && count <= 6;
-        vk::Pipeline new_pipeline = context.state.pipeline_cache.retrieve_pipeline(context, type, !can_be_whole_quad, mem);
-
-        if (new_pipeline != context.current_pipeline) {
-            context.current_pipeline = new_pipeline;
-
-            if (new_pipeline != nullptr)
-                context.render_cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, context.current_pipeline);
-        }
-    }
-
-    // can happen with asynchronous pipeline compilation
     if (context.current_pipeline == nullptr)
         return;
 

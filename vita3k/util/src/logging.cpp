@@ -47,7 +47,15 @@ namespace logging {
 
 static const fs::path &LOG_FILE_NAME = "tsubomi.log";
 static const char *LOG_PATTERN = "%^[%H:%M:%S.%e] |%L| [%!]: %v%$";
+#if defined(VITA3K_PLATFORM_IOS)
+// Bound pending diagnostic memory on phones; overflow already drops oldest.
+static constexpr size_t ASYNC_LOG_QUEUE_SIZE = 4096;
+#else
 static constexpr size_t ASYNC_LOG_QUEUE_SIZE = 65536;
+#endif
+static std::mutex s_level_mutex;
+static bool s_logging_enabled = true;
+static spdlog::level::level_enum s_requested_level = spdlog::level::info;
 static std::vector<spdlog::sink_ptr> sinks;
 static std::once_flag s_async_logging_once;
 #if defined(VITA3K_PLATFORM_IOS)
@@ -92,7 +100,8 @@ void set_log_callback(std::function<void(std::string, int)> cb) {
     s_log_callback = std::move(cb);
 }
 
-ExitCode init(const Root &root_paths, bool use_stdout) {
+ExitCode init(const Root &root_paths, bool use_stdout, bool enabled) {
+    set_enabled(enabled);
     sinks.clear();
     if (use_stdout)
 #ifdef __ANDROID__
@@ -157,12 +166,27 @@ ExitCode init(const Root &root_paths, bool use_stdout) {
 }
 
 void set_level(spdlog::level::level_enum log_level) {
-    spdlog::set_level(log_level);
+    const std::lock_guard<std::mutex> lock(s_level_mutex);
+    s_requested_level = log_level;
+    spdlog::set_level(s_logging_enabled ? log_level : spdlog::level::off);
+}
+
+bool is_enabled() {
+    const std::lock_guard<std::mutex> lock(s_level_mutex);
+    return s_logging_enabled;
+}
+
+void set_enabled(bool enabled) {
+    const std::lock_guard<std::mutex> lock(s_level_mutex);
+    s_logging_enabled = enabled;
+    spdlog::set_level(enabled ? s_requested_level : spdlog::level::off);
 }
 
 ExitCode add_sink(const fs::path &log_path) {
     try {
-        sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.generic_path().native(), true));
+        const std::lock_guard<std::mutex> lock(s_level_mutex);
+        // Preserve the previous report when starting with collection disabled.
+        sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.generic_path().native(), s_logging_enabled));
     } catch (const spdlog::spdlog_ex &ex) {
         std::cerr << "File log initialization failed: " << ex.what() << std::endl;
         return InitConfigFailed;
@@ -200,6 +224,8 @@ void rebuild_default_logger() {
         duplicate_filter,
         spdlog::thread_pool(),
         spdlog::async_overflow_policy::overrun_oldest);
+    const std::lock_guard<std::mutex> lock(s_level_mutex);
+    logger->set_level(s_logging_enabled ? s_requested_level : spdlog::level::off);
     spdlog::set_default_logger(std::move(logger));
     spdlog::set_pattern(LOG_PATTERN);
 }

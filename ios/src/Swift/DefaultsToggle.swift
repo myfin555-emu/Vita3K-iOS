@@ -12,6 +12,7 @@ enum DefaultsKey: String {
     case perfFrametimeGraph = "vita3k.perf.frametimeGraph"
     case perfRAM = "vita3k.perf.ram"
     case perfBattery = "vita3k.perf.battery"
+    case collectLogs = "tsubomi.collectLogs"
     case perfLog = "vita3k.perf.log"
 
     case showTitleIDs = "tsubomi.showTitleIds"
@@ -31,7 +32,7 @@ enum DefaultsKey: String {
     /// library was still drawing the data.
     var defaultValue: Bool {
         switch self {
-        case .showTitleIDs, .showVersion, .showGameSize, .coloredFaceButtons, .wideCoverArt, .soundEffects,
+        case .collectLogs, .showTitleIDs, .showVersion, .showGameSize, .coloredFaceButtons, .wideCoverArt, .soundEffects,
              .liquidGlassInGame:
             // Liquid Glass is the design the app is built around, so the
             // overlay ships with it on; turning it off is a battery trade the

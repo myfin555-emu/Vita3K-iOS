@@ -165,6 +165,7 @@ NS_SWIFT_NAME(Bridge)
 
 /// Share tsubomi.log through the system share sheet, for bug reports.
 + (void)shareLogFile;
++ (void)applyLoggingPreference;
 
 /// Present the system document picker for an official firmware .PUP. The
 /// import runs asynchronously; completion is reported by the core updating the

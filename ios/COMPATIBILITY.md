@@ -402,3 +402,35 @@ resolution or emulated timing. Compare repeated attacks with/without speech
 and note whether stalls occur only on first use. No FPS gain or resolution of
 input latency is established by host tests; the screenshots show 30 FPS in the
 lobby and about 10 FPS during effects at 1x resolution.
+
+### Diagnostic logging and UI rendering pressure
+
+Settings > Performance overlay > Collect diagnostic logs is on by default.
+Turning it off applies immediately and persists across launches. It stops new
+emulator log messages (including the live log feed) and new shader diagnostic
+dumps, while keeping compiled shader caches; messages already queued may
+finish writing. Starting with it off preserves the previous log file. Native
+operating-system/driver diagnostics are outside this switch. The iOS pending log
+queue now holds at most 4096 messages instead of 65536.
+
+The supplied 900cbe7 device capture still contains Metal
+`air.simd_is_helper_thread` pipeline failures with High Accuracy enabled, and
+very low available process memory during gameplay. These failures can leave
+individual UI/effect draws missing. Asynchronous compilation can also skip draws
+until their pipeline is ready; neither observation proves that compilation is
+the cause of the sustained low frame rate after the menu appears.
+
+Shader generation now sleeps when the same shader is already being generated,
+instead of spinning and reading a shared handle without synchronization.
+Skipped pipeline draws without visibility queries no longer trigger framebuffer-fetch pass switches or
+barriers. Large texture upload staging buffers unused for 120 rendered frames
+are released after frame fences have been retired; active textures and in-flight
+uploads remain intact. Recently used buffers stay allocated to avoid churn.
+A sparse `iOS renderer` log reports draw/skip/pass-switch counts and cumulative
+frame-slot fence wait time per 300 frames, plus retained staging memory. Fence
+wait time is not a measurement of the entire GPU frame.
+
+These changes do not replace High Accuracy with the previously regressed A11
+subpass path. Metal shader failures, missing effects and a stable 30 FPS target
+still require device verification and further renderer investigation. No FPS or
+whole-app RAM reduction is established by host tests alone.

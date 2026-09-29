@@ -18,6 +18,7 @@
 #pragma once
 
 #include <blockingconcurrentqueue.h>
+#include <renderer/single_flight.h>
 #include <util/containers.h>
 #include <vkutil/vkutil.h>
 
@@ -87,6 +88,7 @@ private:
 
     // only used when accessing the shaders map
     std::mutex shaders_mutex;
+    SingleFlight<Sha256Hash> shader_generation;
     // because of multithreading, we want the pointers to remain stable
     unordered_map_stable<Sha256Hash, vk::ShaderModule> shaders;
     unordered_map_stable<uint64_t, vk::Pipeline> pipelines;

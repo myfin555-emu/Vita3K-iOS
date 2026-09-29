@@ -1542,6 +1542,11 @@ std::optional<Vita3KIOSFrontendAction> vita3k_ios_take_frontend_action() {
     return action;
 }
 
+bool vita3k_ios_logging_enabled() {
+    id value = [[NSUserDefaults standardUserDefaults] objectForKey:@"tsubomi.collectLogs"];
+    return value == nil || [value boolValue];
+}
+
 int vita3k_ios_load_fps_limit() {
     return 60;
 }

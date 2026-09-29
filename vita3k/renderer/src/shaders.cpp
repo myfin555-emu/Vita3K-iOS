@@ -185,17 +185,22 @@ static shader::GeneratedShader load_shader_generic(shader::Target target, const 
 
     LOG_INFO("Generating {} shader {}", shader_type_str, hash_text);
 
-    fs::create_directories(shaderlog_path);
+    const bool collect_diagnostics = logging::is_enabled();
+    if (collect_diagnostics)
+        fs::create_directories(shaderlog_path);
 
     auto shader_log_path = get_shaderlog_path("gxp");
 
     // Dump gxp binary
-    fs_utils::dump_data(shader_log_path, &program, program.size);
+    if (collect_diagnostics)
+        fs_utils::dump_data(shader_log_path, &program, program.size);
     const auto write_data_with_ext = [&](const std::string &ext, const std::string &data) {
         fs::path out_path;
         if (ext == shader_type_str) {
             out_path = shader_path;
         } else {
+            if (!collect_diagnostics)
+                return true;
             out_path = shader_log_path;
             out_path.replace_extension(ext);
         }

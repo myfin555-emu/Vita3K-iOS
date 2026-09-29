@@ -481,7 +481,7 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
     if (maskupdate)
         LOG_WARN_ONCE("Mask not implemented in the vulkan renderer!");
 
-    const vk::ShaderModule shader_compiling = std::bit_cast<vk::ShaderModule>(~0ULL);
+    auto generation = shader_generation.acquire(hash);
 
     const vk::SpecializationInfo *spec_info = nullptr;
     if (!is_vertex && state.features.should_use_shader_interlock() && program->is_frag_color_used()) {
@@ -489,34 +489,20 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
         spec_info = is_srgb ? &srgb_info_true : &srgb_info_false;
     }
 
-    vk::ShaderModule *shader_module;
+    vk::ShaderModule shader_module;
     {
-        // look if it is in the cache
-        std::unique_lock<std::mutex> lock(shaders_mutex);
-        shader_module = &shaders.insert({ hash, nullptr }).first->second;
-        if (*shader_module == shader_compiling) {
-            // another thread is compiling the same exact shader at the same time
-            // it's no use re-compiling it, so just wait for the other thread being done
-            lock.unlock();
-
-            // we shouldn't need atomics and the compiler shouldn't be able to optimize this
-            while (*shader_module == shader_compiling)
-                std::this_thread::yield();
-        }
-
-        if (*shader_module == nullptr)
-            // now mark the shader as compiling so that other threads accessing it won't try to compile it a second time
-            *shader_module = shader_compiling;
+        std::lock_guard<std::mutex> lock(shaders_mutex);
+        auto it = shaders.find(hash);
+        if (it != shaders.end())
+            shader_module = it->second;
     }
+    if (!shader_module)
+        shader_module = precompile_shader(hash, false);
 
-    if (*shader_module == shader_compiling) {
-        precompile_shader(hash, false);
-    }
-
-    if (*shader_module != shader_compiling) {
+    if (shader_module) {
         vk::PipelineShaderStageCreateInfo shader_stage_info{
             .stage = is_vertex ? vk::ShaderStageFlagBits::eVertex : vk::ShaderStageFlagBits::eFragment,
-            .module = *shader_module,
+            .module = shader_module,
             .pName = is_vertex ? "main_vs" : "main_fs",
             .pSpecializationInfo = spec_info,
         };
@@ -535,9 +521,10 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
         .pCode = source.data()
     };
 
-    *shader_module = state.device.createShaderModule(shader_info);
+    shader_module = state.device.createShaderModule(shader_info);
     {
         std::lock_guard<std::mutex> guard(shaders_mutex);
+        shaders[hash] = shader_module;
         // Save shader cache hashes
         // vertex and fragment shaders are not linked together so no need to associate them
         Sha256Hash empty_hash{};
@@ -550,7 +537,7 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
 
     vk::PipelineShaderStageCreateInfo shader_stage_info{
         .stage = is_vertex ? vk::ShaderStageFlagBits::eVertex : vk::ShaderStageFlagBits::eFragment,
-        .module = *shader_module,
+        .module = shader_module,
         .pName = is_vertex ? "main_vs" : "main_fs",
         .pSpecializationInfo = spec_info,
     };

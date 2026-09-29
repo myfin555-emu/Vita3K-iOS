@@ -519,7 +519,7 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
         // unimplemented imports, that is real work for no reader. The file
         // sink is unaffected, so tsubomi.log keeps everything either way.
         const bool console_attached = isatty(STDOUT_FILENO) != 0;
-        if (logging::init(root_paths, console_attached) != Success)
+        if (logging::init(root_paths, console_attached, vita3k_ios_logging_enabled()) != Success)
             return false;
         vita3k_ios_set_log_file_path(
             (root_paths.get_log_path() / "tsubomi.log").string());

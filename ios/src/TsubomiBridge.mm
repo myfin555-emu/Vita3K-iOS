@@ -462,6 +462,10 @@ id bridge_games() {
     vita3k_ios_internal::queue_frontend_action(std::move(action));
 }
 
++ (void)applyLoggingPreference {
+    logging::set_enabled(vita3k_ios_logging_enabled());
+}
+
 + (void)shareLogFile {
     vita3k_ios_share_log_file();
 }

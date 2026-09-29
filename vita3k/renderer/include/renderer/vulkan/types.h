@@ -81,6 +81,7 @@ struct VKTextureCache : public TextureCache {
     }
 
     void cleanup();
+    void trim_staging_buffers(uint64_t frame_timestamp);
 };
 
 struct FrameDescriptor {
@@ -227,6 +228,13 @@ struct VKContext : public renderer::Context {
     MemState &mem;
 
     uint64_t frame_timestamp = 1;
+#ifdef VITA3K_PLATFORM_IOS
+    uint64_t diagnostic_draws = 0;
+    uint64_t diagnostic_skipped_draws = 0;
+    uint64_t diagnostic_fetch_switches = 0;
+    uint64_t diagnostic_frames = 0;
+    double diagnostic_frame_wait_ms = 0;
+#endif
     uint64_t scene_timestamp = 1;
     std::vector<vk::CommandBuffer> cmdbuffers_to_submit = {};
 

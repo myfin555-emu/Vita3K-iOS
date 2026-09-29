@@ -302,6 +302,7 @@ struct SettingsView: View {
             DefaultsToggle("Show frametime graph", key: .perfFrametimeGraph, onEnable: enablePerfOverlay)
             DefaultsToggle("Show RAM usage", key: .perfRAM, onEnable: enablePerfOverlay)
             DefaultsToggle("Show battery %", key: .perfBattery, onEnable: enablePerfOverlay)
+            DefaultsToggle("Collect diagnostic logs", key: .collectLogs, onChange: Bridge.applyLoggingPreference)
             DefaultsToggle("Show live log", key: .perfLog, onEnable: enablePerfOverlay)
         } header: {
             Text("Performance overlay")

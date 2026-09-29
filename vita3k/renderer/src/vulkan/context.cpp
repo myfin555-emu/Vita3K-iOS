@@ -21,6 +21,7 @@
 #include <renderer/vulkan/gxm_to_vulkan.h>
 #include <renderer/vulkan/state.h>
 
+#include <chrono>
 #include <gxm/functions.h>
 #include <renderer/functions.h>
 
@@ -571,6 +572,9 @@ void new_frame(VKContext &context) {
     vk::Device device = context.state.device;
     FrameObject &frame = context.state.frame();
 
+#ifdef VITA3K_PLATFORM_IOS
+    const auto wait_started = std::chrono::steady_clock::now();
+#endif
     // wait on all fences still present to make sure
     if (!frame.rendered_fences.empty()) {
         // wait for the fences, then reset them
@@ -599,6 +603,22 @@ void new_frame(VKContext &context) {
         frame.rendered_fences.clear();
     }
 
+#ifdef VITA3K_PLATFORM_IOS
+    context.diagnostic_frame_wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - wait_started).count();
+    if (++context.diagnostic_frames == 300) {
+        uint64_t staging_bytes = 0;
+        for (const auto &staging : context.state.texture_cache.staging_buffers)
+            staging_bytes += staging.buffer.size;
+        LOG_INFO("iOS renderer: frames={} draws={} skipped={} fetch_pass_switches={} frame_slot_wait_ms={:.1f} staging_mb={:.1f}",
+            context.diagnostic_frames, context.diagnostic_draws, context.diagnostic_skipped_draws,
+            context.diagnostic_fetch_switches, context.diagnostic_frame_wait_ms, staging_bytes / (1024.0 * 1024.0));
+        context.diagnostic_frames = 0;
+        context.diagnostic_draws = 0;
+        context.diagnostic_skipped_draws = 0;
+        context.diagnostic_fetch_switches = 0;
+        context.diagnostic_frame_wait_ms = 0;
+    }
+#endif
     device.resetCommandPool(frame.prerender_pool);
     device.resetCommandPool(frame.render_pool);
 
@@ -611,6 +631,9 @@ void new_frame(VKContext &context) {
 
     // deferred destruction of the objects
     frame.destroy_queue.destroy_objects();
+#ifdef VITA3K_PLATFORM_IOS
+    context.state.texture_cache.trim_staging_buffers(context.frame_timestamp);
+#endif
 
     context.last_vert_texture_count = ~0;
     context.last_frag_texture_count = ~0;

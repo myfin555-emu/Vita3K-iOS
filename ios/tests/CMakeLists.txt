@@ -74,3 +74,13 @@ add_test(NAME shader_cache_namespace_tests COMMAND shader_cache_namespace_tests 
 
 add_test(NAME controller_input_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ControllerInputTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(controller_input_tests PROPERTIES TIMEOUT 30)
+
+add_executable(single_flight_tests SingleFlightTests.cpp)
+target_compile_features(single_flight_tests PRIVATE cxx_std_17)
+target_include_directories(single_flight_tests PRIVATE ../../vita3k/renderer/include)
+target_link_libraries(single_flight_tests PRIVATE Threads::Threads)
+add_test(NAME single_flight_tests COMMAND single_flight_tests)
+set_tests_properties(single_flight_tests PROPERTIES TIMEOUT 15)
+
+add_test(NAME renderer_resource_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/RendererResourceTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(renderer_resource_tests PROPERTIES TIMEOUT 30)

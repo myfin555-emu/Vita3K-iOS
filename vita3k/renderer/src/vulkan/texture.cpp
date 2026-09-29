@@ -190,6 +190,21 @@ void sync_texture(VKContext &context, MemState &mem, std::size_t index, SceGxmTe
     }
 }
 
+void VKTextureCache::trim_staging_buffers(uint64_t frame_timestamp) {
+    // Called after new_frame has waited for the recycled frame's fences.
+    // Keep recently used buffers warm; discard only large, idle upload scratch.
+    for (auto &staging : staging_buffers) {
+        if (!should_release_staging_buffer(staging.buffer.size, staging.frame_timestamp, frame_timestamp))
+            continue;
+        staging.buffer.destroy();
+        staging.buffer.size = 0;
+        staging.used_so_far = 0;
+        staging.frame_timestamp = ~uint64_t{ 0 };
+        staging.scene_timestamp = ~uint64_t{ 0 };
+        staging.waiting_fence = nullptr;
+    }
+}
+
 void VKTextureCache::prepare_staging_buffer(bool is_configure) {
     assert(!is_texture_transfer_ready);
     VKContext *context = reinterpret_cast<VKContext *>(state.context);
