@@ -116,7 +116,7 @@ public:
     // Shared by pipeline creation and Metal vertex upload so their strides agree.
     vk::PipelineVertexInputStateCreateInfo get_vertex_input_state(const SceGxmVertexProgram &vertex_program, MemState &mem);
     // if not 0, next time the pipeline cache should be saved (in seconds since epoch)
-    std::atomic<uint64_t> next_pipeline_cache_save{std::numeric_limits<uint64_t>::max()};
+    std::atomic<uint64_t> next_pipeline_cache_save{ std::numeric_limits<uint64_t>::max() };
 
     vk::DescriptorSetLayout uniforms_layout;
     // used for the mask, color attachment
