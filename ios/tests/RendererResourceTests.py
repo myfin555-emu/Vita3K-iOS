@@ -139,8 +139,13 @@ assert 'vita3k_ios_logging_enabled())' in (repo / 'ios/src/UpstreamMain.cpp').re
 assert 'logging::set_enabled(vita3k_ios_logging_enabled())' in (repo / 'ios/src/TsubomiBridge.mm').read_text()
 assert 'case .collectLogs,' in (repo / 'ios/src/Swift/DefaultsToggle.swift').read_text()
 scene = function('vita3k/renderer/src/vulkan/scene.cpp', 'void draw(')
-assert scene.index('if (context.current_pipeline == nullptr)') < scene.index('vk::ImageMemoryBarrier barrier')
-assert scene.index('if (context.current_pipeline == nullptr)') < scene.index('context.render_cmd.endRenderPass()')
+# Required pipelines now wait or throw; the old null-pipeline early return
+# would silently drop effects. Resolve before framebuffer-fetch barriers/pass
+# switches. PipelineReadinessTests executes the wait/failure contract itself.
+resolve = scene.index('context.state.pipeline_cache.retrieve_pipeline(')
+assert resolve < scene.index('vk::ImageMemoryBarrier barrier')
+assert resolve < scene.index('context.render_cmd.endRenderPass()')
+assert 'if (context.current_pipeline == nullptr)' not in scene
 frame = function('vita3k/renderer/src/vulkan/context.cpp', 'void new_frame(')
 assert frame.index('device.waitForFences(') < frame.index('texture_cache.trim_staging_buffers(')
 print('Production resource transitions and frontend/draw integration checks passed')
