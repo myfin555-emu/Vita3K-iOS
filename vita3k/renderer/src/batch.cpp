@@ -20,6 +20,7 @@
 #include <renderer/functions.h>
 #include <renderer/state.h>
 #include <renderer/types.h>
+#include <util/ios_performance.h>
 
 #include <renderer/vulkan/types.h>
 
@@ -185,6 +186,9 @@ void reset_command_list(CommandList &command_list) {
 }
 
 static void render_loop(renderer::State &state, DisplayState &display, GxmState &gxm, MemState &mem, Config &config) try {
+#ifdef VITA3K_PLATFORM_IOS
+    util::IOSPerformanceThread performance;
+#endif
     if (state.precompile_requested) {
         auto progress_overlay = state.overlay_manager
             ? state.overlay_manager->create<overlay::shader_precompile_progress>()

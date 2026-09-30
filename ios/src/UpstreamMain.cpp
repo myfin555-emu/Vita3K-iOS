@@ -728,6 +728,8 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
         .v_sync = current.v_sync,
         .shader_cache = current.shader_cache,
         .fps_limit = 60,
+        .fps_hack = current.fps_hack,
+        .turbo_mode = current.turbo_mode,
         .modules_mode = current.modules_mode,
         .audio_volume = current.audio_volume,
         .texture_cache = current.texture_cache,
@@ -2271,9 +2273,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         current.resolution_multiplier = settings.resolution_multiplier;
         current.v_sync = settings.v_sync;
         current.shader_cache = settings.shader_cache;
-        // The game-dependent FPS hack was removed from the iOS UI because it
-        // changes guest timing. Clear any value persisted by an older build.
-        current.fps_hack = false;
+        current.fps_hack = settings.fps_hack;
         current.cpu_opt = settings.cpu_opt;
         current.modules_mode = std::clamp(settings.modules_mode, 0, 2);
         current.lle_modules = settings.lle_modules;
@@ -2290,7 +2290,8 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     apply(desired.current_config);
     desired.resolution_multiplier = settings.resolution_multiplier;
     desired.v_sync = settings.v_sync;
-    desired.fps_hack = false;
+    desired.fps_hack = settings.fps_hack;
+    desired.turbo_mode = settings.turbo_mode;
     desired.cpu_opt = settings.cpu_opt;
     desired.modules_mode = std::clamp(settings.modules_mode, 0, 2);
     desired.lle_modules = settings.lle_modules;
@@ -2318,7 +2319,6 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
 
     const bool ram_budget_changed = desired.ios_emulator_ram_mb != emuenv.cfg.ios_emulator_ram_mb;
     const auto result = app::commit_settings(emuenv, desired);
-    emuenv.display.fps_hack = false;
     emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
     std::vector<std::string> restart_required;
     restart_required.reserve(result.restart_required_settings.size());
@@ -2327,8 +2327,9 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     if (ram_budget_changed)
         restart_required.push_back("Emulated RAM budget (restart the app)");
     vita3k_ios_report_settings_result(restart_required);
-    LOG_INFO("iOS settings saved: runtime_applied={} restart_required={}",
-        result.runtime_settings_applied, restart_required.size());
+    LOG_INFO("iOS settings saved: runtime_applied={} restart_required={} fps-hack={} effective-fps-hack={} turbo-mode={}",
+        result.runtime_settings_applied, restart_required.size(), emuenv.cfg.fps_hack,
+        emuenv.display.fps_hack.load(std::memory_order_relaxed), emuenv.cfg.turbo_mode);
 }
 
 // Apply a per-game override to the runtime config only — commit_settings (and
@@ -2337,7 +2338,7 @@ void apply_game_session_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &s
     auto &current = emuenv.cfg.current_config;
     current.resolution_multiplier = settings.resolution_multiplier;
     current.v_sync = settings.v_sync;
-    current.fps_hack = false;
+    current.fps_hack = settings.fps_hack;
     current.cpu_opt = settings.cpu_opt;
     current.modules_mode = std::clamp(settings.modules_mode, 0, 2);
     current.lle_modules = settings.lle_modules;
@@ -2921,8 +2922,9 @@ int main(int argc, char *argv[]) {
     }
 
     LOG_INFO("Game started: {} ({})", emuenv->current_app_title, launch_request->app_path);
-    // Never inherit the removed iOS FPS-hack setting from an older config.
-    emuenv->display.fps_hack = false;
+    emuenv->display.fps_hack = emuenv->cfg.current_config.fps_hack;
+    LOG_INFO("iOS speed settings active: fps-hack={} turbo-mode={}",
+        emuenv->cfg.current_config.fps_hack, emuenv->cfg.turbo_mode);
     emuenv->display.fps_limit.store(60, std::memory_order_relaxed);
 
     const bool has_virtual_controller = vita3k_ios_attach_virtual_controller();

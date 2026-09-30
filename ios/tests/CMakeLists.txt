@@ -96,3 +96,9 @@ set_tests_properties(settings_snapshot_tests PROPERTIES TIMEOUT 30)
 
 add_test(NAME renderer_failure_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/RendererFailureTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(renderer_failure_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME speed_settings_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/SpeedSettingsTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(speed_settings_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME ios_turbo_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/IOSTurboTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(ios_turbo_tests PROPERTIES TIMEOUT 30)

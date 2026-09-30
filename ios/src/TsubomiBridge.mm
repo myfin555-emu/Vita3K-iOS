@@ -200,6 +200,8 @@ NSString *trophy_grade_name(int grade) {
     _resolutionMultiplier = core.resolution_multiplier;
     _vSync = core.v_sync;
     _shaderCache = core.shader_cache;
+    _fpsHack = core.fps_hack;
+    _turboMode = core.turbo_mode;
     _modulesMode = core.modules_mode;
     _audioVolume = core.audio_volume;
     _textureCache = core.texture_cache;
@@ -243,6 +245,8 @@ NSString *trophy_grade_name(int grade) {
     core.resolution_multiplier = self.resolutionMultiplier;
     core.v_sync = self.vSync;
     core.shader_cache = self.shaderCache;
+    core.fps_hack = self.fpsHack;
+    core.turbo_mode = self.turboMode;
     core.fps_limit = 60; // iOS always requests 60; the limiter UI was removed.
     core.modules_mode = static_cast<int>(self.modulesMode);
     core.audio_volume = static_cast<int>(self.audioVolume);

@@ -48,6 +48,7 @@ struct SettingsView: View {
                 }
                 videoSection
                 graphicsSection
+                speedSection
                 if !model.isPerGame { jitMemorySection }
                 modulesSection
                 audioSection
@@ -210,6 +211,22 @@ struct SettingsView: View {
                 High accuracy includes Surface sync for lighting and effects. \
                 Character models shattered? Make sure Double buffer is off.
                 """)
+        }
+    }
+
+    private var speedSection: some View {
+        Section {
+            Toggle("FPS Hack", isOn: $model.fpsHack)
+            if !model.isPerGame {
+                Toggle("Turbo mode (iOS)", isOn: $model.turboMode)
+            }
+        } header: {
+            Text("Speed & Timing")
+        } footer: {
+            if !model.isPerGame {
+                Text("Turbo mode prioritizes emulation, rendering and shader workers using iOS scheduling. It does not force GPU clocks or bypass thermal limits. Higher priority may increase power use.")
+            }
+            Text("FPS Hack reduces multi-vblank waits to one. Some 30 FPS games can reach 60 FPS; others may run too fast or show timing problems. Turn it off if this happens. It does not increase GPU power.")
         }
     }
 

@@ -19,6 +19,8 @@
 #include <tracy/Tracy.hpp>
 #endif
 
+#include <util/ios_performance.h>
+
 #include <cpu/common.h>
 #include <kernel/state.h>
 #include <mem/functions.h>
@@ -72,6 +74,9 @@ static int SDLCALL thread_function(void *data) {
     }
 #endif
 
+#ifdef VITA3K_PLATFORM_IOS
+    util::IOSPerformanceThread performance;
+#endif
     thread->run_loop();
     const uint32_t r0 = read_reg(*thread->cpu, 0);
     const SceUID thid = thread->id;

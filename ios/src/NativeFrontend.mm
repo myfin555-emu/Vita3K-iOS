@@ -619,6 +619,8 @@ Vita3KIOSSettings game_settings_or(NSString *titleId, const Vita3KIOSSettings &f
     if (stored[@"shader_cache"])
         settings.shader_cache = [stored[@"shader_cache"] boolValue];
     settings.fps_limit = 60;
+    if (stored[@"fpsHack"])
+        settings.fps_hack = [stored[@"fpsHack"] boolValue];
     if (stored[@"modulesMode"])
         settings.modules_mode = [stored[@"modulesMode"] intValue];
     if (stored[@"audioVolume"])
@@ -658,6 +660,7 @@ void store_game_settings(NSString *titleId, const Vita3KIOSSettings &settings) {
         @"resolution": @(settings.resolution_multiplier),
         @"vsync": @(settings.v_sync),
         @"shader_cache": @(settings.shader_cache),
+        @"fpsHack": @(settings.fps_hack),
         @"modulesMode": @(settings.modules_mode),
         @"audioVolume": @(settings.audio_volume),
         @"textureCache": @(settings.texture_cache),

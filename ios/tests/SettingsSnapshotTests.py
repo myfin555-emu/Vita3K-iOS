@@ -48,12 +48,16 @@ int main() {
     EmuEnvState env;
     env.cfg.resolution_multiplier = 1.f;
     env.cfg.current_config.resolution_multiplier = .75f;
+    env.cfg.fps_hack = true;
+    env.cfg.turbo_mode = true;
+    env.cfg.current_config.fps_hack = false;
     env.cfg.high_accuracy = true;
     env.cfg.current_config.high_accuracy = false;
     env.cfg.lle_modules = {"saved"};
     env.cfg.current_config.lle_modules = {"game-override"};
     env.cfg.disable_surface_sync = true; // Old config must not disable accurate readback.
     auto saved = native_settings(env);
+    assert(saved.fps_hack && saved.turbo_mode);
     assert(saved.resolution_multiplier == 1.f);
     assert(saved.high_accuracy && saved.surface_sync);
     assert(saved.lle_modules == std::vector<std::string>{"saved"});

@@ -24,6 +24,8 @@ NS_SWIFT_NAME(EmulatorSettings)
 @property(nonatomic) float resolutionMultiplier;
 @property(nonatomic) BOOL vSync;
 @property(nonatomic) BOOL shaderCache;
+@property(nonatomic) BOOL fpsHack;
+@property(nonatomic) BOOL turboMode;
 @property(nonatomic) NSInteger modulesMode;
 @property(nonatomic) NSInteger audioVolume;
 @property(nonatomic) BOOL textureCache;

@@ -19,6 +19,7 @@
 #include <renderer/vulkan/pipeline_cache_data.h>
 #include <renderer/vulkan/render_pass_dependencies.h>
 #include <renderer/vulkan/vertex_stream.h>
+#include <util/ios_performance.h>
 
 #include <renderer/vulkan/gxm_to_vulkan.h>
 #include <renderer/vulkan/state.h>
@@ -751,6 +752,10 @@ vk::PipelineVertexInputStateCreateInfo PipelineCache::get_vertex_input_state(con
 }
 
 void PipelineCache::compiler_thread(MemState &mem) {
+#ifdef VITA3K_PLATFORM_IOS
+    // Shader jobs support the latency-sensitive CPU/render workers.
+    util::IOSPerformanceThread performance(QOS_CLASS_USER_INITIATED);
+#endif
     moodycamel::ConsumerToken consumer_token(pipeline_compile_queue);
 
     // just a single loop, waiting for a pipeline compile request and compiling it

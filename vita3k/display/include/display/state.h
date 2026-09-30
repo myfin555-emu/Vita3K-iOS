@@ -82,7 +82,7 @@ struct DisplayState {
     // this allows some game running at 30fps to run at 60fps without any issue
     // however this is not always the case, some games may not be affected (if they look at the Vcount)
     // or run twice as fast (if they only rely on these function calls for their timings)
-    bool fps_hack = false;
+    std::atomic<bool> fps_hack{ false };
 
     // Host presentation cap. Guest timing and the 60 Hz Vita vblank clock are
     // left untouched; frames are only skipped when they arrive faster than

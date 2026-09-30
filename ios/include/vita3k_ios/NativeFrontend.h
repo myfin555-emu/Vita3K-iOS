@@ -56,6 +56,8 @@ struct Vita3KIOSSettings {
     bool v_sync = true;
     bool shader_cache = true;
     int fps_limit = 60;
+    bool fps_hack = false;
+    bool turbo_mode = false; // iOS: CPU/render worker QoS; global only.
     int modules_mode = 0;
     int audio_volume = 100;
     bool texture_cache = true;

@@ -22,6 +22,8 @@ final class SettingsModel: ObservableObject {
     @Published var resolutionMultiplier: Float
     @Published var vSync: Bool
     @Published var shaderCache: Bool
+    @Published var fpsHack: Bool
+    @Published var turboMode: Bool
     @Published var modulesMode: Int
     @Published var lleModules: [String]
     let availableModules: [String]
@@ -65,6 +67,8 @@ final class SettingsModel: ObservableObject {
         resolutionMultiplier = settings.resolutionMultiplier
         vSync = settings.vSync
         shaderCache = settings.shaderCache
+        fpsHack = settings.fpsHack
+        turboMode = settings.turboMode
         modulesMode = min(2, max(0, settings.modulesMode))
         lleModules = settings.lleModules
         availableModules = Array(Set(settings.availableModules + settings.lleModules)).sorted()
@@ -120,6 +124,8 @@ final class SettingsModel: ObservableObject {
         settings.resolutionMultiplier = resolutionMultiplier
         settings.vSync = vSync
         settings.shaderCache = shaderCache
+        settings.fpsHack = fpsHack
+        if !isPerGame { settings.turboMode = turboMode }
         settings.modulesMode = modulesMode
         settings.lleModules = lleModules
         settings.audioVolume = Int(audioVolume)

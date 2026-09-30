@@ -16,6 +16,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 #include <app/functions.h>
+#include <util/ios_performance.h>
 
 #include <audio/state.h>
 #include <camera/state.h>
@@ -618,6 +619,9 @@ void apply_renderer_config(EmuEnvState &emuenv) {
     if (r.support_custom_drivers())
         r.set_turbo_mode(emuenv.cfg.turbo_mode);
 #endif
+#ifdef VITA3K_PLATFORM_IOS
+    util::set_ios_performance_mode(emuenv.cfg.turbo_mode);
+#endif
     emuenv.display.fps_hack = cc.fps_hack;
 
     if (!emuenv.overlay_manager)
@@ -716,6 +720,9 @@ void apply_runtime_settings(EmuEnvState &emuenv) {
     if (r.support_custom_drivers())
         r.set_turbo_mode(emuenv.cfg.turbo_mode);
 #endif
+#ifdef VITA3K_PLATFORM_IOS
+    util::set_ios_performance_mode(emuenv.cfg.turbo_mode);
+#endif
     emuenv.display.fps_hack = cc.fps_hack;
     r.sys_date_format = cc.sys_date_format;
     r.sys_lang = cc.sys_lang;
@@ -768,6 +775,10 @@ SettingsCommitResult commit_settings(EmuEnvState &emuenv, const Config &desired_
     persisted_cfg.current_config = desired_cfg.current_config;
     config::save_current_config(persisted_cfg, emuenv.config_path, {}, false);
     emuenv.cfg = persisted_cfg;
+#ifdef VITA3K_PLATFORM_IOS
+    // Turbo is global even when the running title uses a custom GPU profile.
+    util::set_ios_performance_mode(emuenv.cfg.turbo_mode);
+#endif
 
     if (!active_profile) {
         emuenv.cfg.current_config = previous_current;
