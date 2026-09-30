@@ -602,7 +602,12 @@ void apply_renderer_config(EmuEnvState &emuenv) {
 
     r.res_multiplier = cc.resolution_multiplier;
     r.set_vsync_state(cc.v_sync);
+#ifdef VITA3K_PLATFORM_IOS
+    // High accuracy includes GPU-written surfaces read back by the game.
+    r.set_surface_sync_state(cc.disable_surface_sync && !cc.high_accuracy);
+#else
     r.set_surface_sync_state(cc.disable_surface_sync);
+#endif
     r.set_screen_filter(cc.screen_filter);
     r.set_anisotropic_filtering(cc.anisotropic_filtering);
     r.set_stretch_display(cc.stretch_the_display_area);
@@ -695,7 +700,12 @@ void apply_runtime_settings(EmuEnvState &emuenv) {
 
     auto &r = *emuenv.renderer;
     r.set_vsync_state(cc.v_sync);
+#ifdef VITA3K_PLATFORM_IOS
+    // High accuracy includes GPU-written surfaces read back by the game.
+    r.set_surface_sync_state(cc.disable_surface_sync && !cc.high_accuracy);
+#else
     r.set_surface_sync_state(cc.disable_surface_sync);
+#endif
     r.set_screen_filter(cc.screen_filter);
     r.set_anisotropic_filtering(cc.anisotropic_filtering);
     r.set_stretch_display(cc.stretch_the_display_area);

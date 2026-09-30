@@ -186,7 +186,11 @@ struct SettingsView: View {
             .accessibilityValue(model.resolutionLabel)
 
             Toggle("High accuracy", isOn: $model.highAccuracy)
+                .onChange(of: model.highAccuracy) { enabled in
+                    if enabled { model.surfaceSync = true }
+                }
             Toggle("Surface sync", isOn: $model.surfaceSync)
+                .disabled(model.highAccuracy)
             Toggle("Double buffer", isOn: $model.doubleBuffer)
             Toggle("Async pipeline compilation", isOn: $model.asyncPipelineCompilation)
 
@@ -203,7 +207,7 @@ struct SettingsView: View {
             // screen. Kept to the three symptoms people actually report.
             Text("""
                 Graphics look wrong? Try High accuracy. \
-                Lighting white or missing? Also turn on Surface sync. \
+                High accuracy includes Surface sync for lighting and effects. \
                 Character models shattered? Make sure Double buffer is off.
                 """)
         }

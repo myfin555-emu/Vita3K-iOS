@@ -96,3 +96,19 @@ set_tests_properties(pipeline_readiness_tests PROPERTIES TIMEOUT 30)
 add_test(NAME surface_view_routing_tests COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceViewRoutingTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
 set_tests_properties(surface_view_routing_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME menu_rendering_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/MenuRenderingTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
+set_tests_properties(menu_rendering_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME shader_cache_recovery_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ShaderCacheRecoveryTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
+set_tests_properties(shader_cache_recovery_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME pipeline_recovery_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/PipelineRecoveryTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
+set_tests_properties(pipeline_recovery_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME texture_upload_recovery_tests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextureUploadRecoveryTests.py ${CMAKE_CXX_COMPILER} ${Vulkan_INCLUDE_DIR})
+set_tests_properties(texture_upload_recovery_tests PROPERTIES TIMEOUT 30)

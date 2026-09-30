@@ -16,6 +16,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 #include <renderer/shaders.h>
+#include <renderer/spirv_cache.h>
 
 #include <renderer/vulkan/state.h>
 
@@ -177,7 +178,7 @@ static shader::GeneratedShader load_shader_generic(shader::Target target, const 
                 return { source, std::vector<uint32_t>() };
             }
         } else {
-            std::vector<uint32_t> source = load_shader_generic<std::vector<uint32_t>>(get_shader_path("spv"));
+            std::vector<uint32_t> source = pre_load_shader_spirv(get_shader_path("spv"));
             if (!source.empty())
                 return { "", source };
         }
@@ -249,7 +250,21 @@ std::string pre_load_shader_glsl(const fs::path &shader_path) {
 }
 
 std::vector<uint32_t> pre_load_shader_spirv(const fs::path &shader_path) {
-    return load_shader_generic<std::vector<uint32_t>>(shader_path);
+    // Open once: a two-pass size/read can overflow the first allocation if a
+    // compiler replaces the cache between reads. Reject incomplete cache files.
+    fs::ifstream file(shader_path, std::ios::binary | std::ios::ate);
+    if (!file)
+        return {};
+    const auto size = file.tellg();
+    if (size < 20 || size % sizeof(uint32_t) != 0)
+        return {};
+    std::vector<uint32_t> source(static_cast<size_t>(size) / sizeof(uint32_t));
+    file.seekg(0);
+    if (!file.read(reinterpret_cast<char *>(source.data()), size) || !valid_spirv_cache(source)) {
+        LOG_WARN("Invalid SPIR-V cache {}; rebuilding from GXP on use", shader_path.string());
+        return {};
+    }
+    return source;
 }
 
 } // namespace renderer

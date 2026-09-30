@@ -41,10 +41,9 @@ void State::update_overlays() {
 
     if (show_compile_shaders) {
         const auto now = std::chrono::steady_clock::now();
-        const uint32_t newly_compiled = shaders_count_compiled;
+        const uint32_t newly_compiled = shaders_count_compiled.exchange(0, std::memory_order_relaxed);
         if (newly_compiled > 0) {
             m_shaders_compiled_count += newly_compiled;
-            shaders_count_compiled = 0;
             m_shaders_compiled_time = now;
 
             auto notice = overlay_manager->get<overlay::shader_compile_notice>();

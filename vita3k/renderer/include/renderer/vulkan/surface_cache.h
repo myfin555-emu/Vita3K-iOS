@@ -68,6 +68,8 @@ struct CastedTexture {
     // only used if an image to image copy is not possible
     vkutil::Buffer transition_buffer;
     uint64_t scene_timestamp = 0;
+    uint64_t source_generation = 0;
+    bool copied_from_active_target = false;
     uint32_t cropped_x = 0;
     uint32_t cropped_y = 0;
     uint32_t cropped_width = 0;
@@ -89,6 +91,8 @@ struct ColorSurfaceCacheInfo : public SurfaceCacheInfo {
     uint16_t original_height;
     uint32_t stride_bytes;
     uint64_t last_frame_rendered;
+    // Increment on every render-target binding, including multiple writes in one frame.
+    uint64_t content_generation = 0;
 
     SceGxmColorBaseFormat format;
     vk::ComponentMapping swizzle;

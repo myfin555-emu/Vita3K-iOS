@@ -114,7 +114,7 @@ struct State {
     int last_scene_id = 0;
 
     // on Vulkan, this is actually the number of pipelines compiled
-    uint32_t shaders_count_compiled = 0;
+    std::atomic<uint32_t> shaders_count_compiled{0};
     uint32_t programs_count_pre_compiled = 0;
 
     bool should_display;
@@ -136,6 +136,9 @@ struct State {
 
     std::unique_ptr<std::thread> render_thread;
     std::atomic<bool> render_abort{ false };
+    // Published once by the render thread; read only after acquire on failed.
+    std::atomic<bool> render_failed{ false };
+    std::string render_error;
 
     std::vector<ShadersHash> precompile_queue;
     bool precompile_requested = false;

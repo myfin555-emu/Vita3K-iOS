@@ -6,6 +6,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES 
     message(FATAL_ERROR "This host integration suite requires x86_64 Linux")
 endif()
 get_filename_component(repo "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+set(Boost_INCLUDE_DIR "${repo}/external/boost" CACHE PATH "Pinned Boost headers")
 set(DYNARMIC_FRONTENDS A32 CACHE STRING "" FORCE)
 set(DYNARMIC_TESTS OFF CACHE BOOL "" FORCE)
 set(DYNARMIC_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
@@ -17,7 +18,7 @@ add_executable(pool_test ${CMAKE_CURRENT_LIST_DIR}/PooledJitTests.cpp
  ${repo}/vita3k/mem/src/mem.cpp ${repo}/vita3k/mem/src/allocator.cpp)
 target_compile_features(pool_test PRIVATE cxx_std_20)
 target_compile_definitions(pool_test PRIVATE VITA3K_PLATFORM_IOS=1)
-target_include_directories(pool_test PRIVATE ${CMAKE_CURRENT_LIST_DIR}/support ${repo}/vita3k/cpu/include ${repo}/vita3k/mem/include ${repo}/vita3k/util/include)
+target_include_directories(pool_test PRIVATE ${CMAKE_CURRENT_LIST_DIR}/support ${repo}/vita3k/cpu/include ${repo}/vita3k/mem/include ${repo}/vita3k/util/include ${repo}/external/boost)
 target_link_libraries(pool_test PRIVATE dynarmic merry::mcl fmt::fmt Threads::Threads)
 
 enable_testing()

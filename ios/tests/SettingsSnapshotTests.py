@@ -1,5 +1,6 @@
 """Compile the production native settings snapshot against distinct saved/live settings."""
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,13 @@ int face_button_slot_for_physical(short n) { return n; }
 enum {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH};
 '''
 code += source[start:end]
+app = (repo / 'vita3k/app/src/app_init.cpp').read_text()
+block = re.search(r'#ifdef VITA3K_PLATFORM_IOS\n    // High accuracy.*?#endif', app, re.S).group()
+code += 'void apply_sync(const Config &cc, Config &r) {\n' + block.replace('r.set_surface_sync_state(', 'r.disable_surface_sync = (') + '\n}\n'
+assignments = re.findall(r'(?:current|desired)\.disable_surface_sync = [^;]+;', source)
+assert len(assignments) == 3
+for i, assignment in enumerate(assignments):
+    code += f'bool save_sync_{i}(const Vita3KIOSSettings &settings) {{ Config current, desired; ' + assignment + ' return ' + assignment.split(' = ')[0] + '; }\n'
 code += r'''
 int main() {
     EmuEnvState env;
@@ -44,11 +52,22 @@ int main() {
     env.cfg.current_config.high_accuracy = false;
     env.cfg.lle_modules = {"saved"};
     env.cfg.current_config.lle_modules = {"game-override"};
-    env.cfg.disable_surface_sync = false;
+    env.cfg.disable_surface_sync = true; // Old config must not disable accurate readback.
     auto saved = native_settings(env);
     assert(saved.resolution_multiplier == 1.f);
     assert(saved.high_accuracy && saved.surface_sync);
     assert(saved.lle_modules == std::vector<std::string>{"saved"});
+    Config applied;
+    apply_sync(env.cfg, applied);
+    assert(!applied.disable_surface_sync);
+    saved.surface_sync = false;
+    assert(!save_sync_0(saved) && !save_sync_1(saved) && !save_sync_2(saved));
+    saved.high_accuracy = false;
+    assert(save_sync_0(saved) && save_sync_1(saved) && save_sync_2(saved));
+    env.cfg.high_accuracy = false;
+    apply_sync(env.cfg, applied);
+    assert(applied.disable_surface_sync);
+
     // Saving an unrelated volume edit must not erase the pending resolution.
     saved.audio_volume = 75;
     env.cfg.resolution_multiplier = saved.resolution_multiplier;
@@ -59,6 +78,6 @@ int main() {
 with tempfile.TemporaryDirectory() as tmp:
     path = pathlib.Path(tmp)
     (path / 'test.cpp').write_text(code)
-    subprocess.run([sys.argv[1], '-std=c++20', '-UNDEBUG', '-I' + str(repo / 'ios/include'), str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+    subprocess.run([sys.argv[1], '-std=c++20', '-UNDEBUG', '-DVITA3K_PLATFORM_IOS', '-I' + str(repo / 'ios/include'), str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True)
 print('Production settings snapshot checks passed')

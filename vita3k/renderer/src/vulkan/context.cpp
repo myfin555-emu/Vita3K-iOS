@@ -622,6 +622,10 @@ void new_frame(VKContext &context) {
         LOG_INFO("iOS renderer: frames={} draws={} skipped={} fetch_pass_switches={} frame_slot_wait_ms={:.1f} staging_mb={:.1f}",
             context.diagnostic_frames, context.diagnostic_draws, context.diagnostic_skipped_draws,
             context.diagnostic_fetch_switches, context.diagnostic_frame_wait_ms, staging_bytes / (1024.0 * 1024.0));
+        LOG_INFO("iOS surface copies: copied={} reused={} (300 frames)",
+            context.diagnostic_surface_copies, context.diagnostic_surface_copy_reuses);
+        context.diagnostic_surface_copies = 0;
+        context.diagnostic_surface_copy_reuses = 0;
         auto &texture_stats = context.state.texture_cache;
         LOG_INFO("iOS texture work: hash_ms={:.1f} hash_input_mb={:.1f} uploads={} (300 frames)",
             texture_stats.diagnostic_hash_ms, texture_stats.diagnostic_hash_bytes / (1024.0 * 1024.0), texture_stats.diagnostic_texture_uploads);

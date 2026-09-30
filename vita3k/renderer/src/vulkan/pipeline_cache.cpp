@@ -35,6 +35,8 @@
 #include <SDL3/SDL_cpuinfo.h>
 
 #include <algorithm>
+#include <exception>
+#include <stdexcept>
 
 // don't use the dispatch version, because we always hash a small amount
 // with a known size
@@ -411,6 +413,9 @@ void PipelineCache::cleanup() {
         for (auto &[hash, shader] : shaders)
             state.device.destroy(shader);
         shaders.clear();
+        for (auto shader : retired_shaders)
+            state.device.destroy(shader);
+        retired_shaders.clear();
     }
 
     for (int i = 0; i < 2; i++)
@@ -479,7 +484,7 @@ static const vk::SpecializationInfo srgb_info_false = {
     .pData = &srgb_entry_false
 };
 
-vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmProgram *program, const Sha256Hash &hash, bool is_vertex, bool maskupdate, MemState &mem, const shader::Hints &hints, bool is_srgb) {
+vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmProgram *program, const Sha256Hash &hash, bool is_vertex, bool maskupdate, MemState &mem, const shader::Hints &hints, bool is_srgb, bool regenerate) {
     if (maskupdate)
         LOG_WARN_ONCE("Mask not implemented in the vulkan renderer!");
 
@@ -498,7 +503,9 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
         if (it != shaders.end())
             shader_module = it->second;
     }
-    if (!shader_module)
+    if (regenerate)
+        shader_module = nullptr;
+    else if (!shader_module)
         shader_module = precompile_shader(hash, false);
 
     if (shader_module) {
@@ -511,12 +518,13 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
         return shader_stage_info;
     }
 
+    const auto translation_started = std::chrono::steady_clock::now();
     const std::string hash_text = hex_string(hash);
 
     LOG_INFO("Generating vulkan spv shader {}", hash_text);
     const std::string shader_version = fmt::format("vk{}", shader::CURRENT_VERSION);
 
-    shader::usse::SpirvCode source = load_spirv_shader(*program, state.features, true, hints, maskupdate, state.shaders_path, state.shaders_log_path, shader_version, true);
+    shader::usse::SpirvCode source = load_spirv_shader(*program, state.features, true, hints, maskupdate, state.shaders_path, state.shaders_log_path, shader_version, false);
 
     vk::ShaderModuleCreateInfo shader_info{
         .codeSize = sizeof(uint32_t) * source.size(),
@@ -524,8 +532,13 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
     };
 
     shader_module = state.device.createShaderModule(shader_info);
+    LOG_INFO("Shader module ready: stage={} hash={} words={} elapsed_ms={:.2f}",
+        is_vertex ? "vertex" : "fragment", hash_text, source.size(),
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - translation_started).count());
     {
         std::lock_guard<std::mutex> guard(shaders_mutex);
+        if (auto old = shaders.find(hash); old != shaders.end() && old->second != shader_module)
+            retired_shaders.push_back(old->second);
         shaders[hash] = shader_module;
         // Save shader cache hashes
         // vertex and fragment shaders are not linked together so no need to associate them
@@ -749,7 +762,29 @@ void PipelineCache::compiler_thread(MemState &mem) {
             // use this as an instruction to stop the thread
             break;
 
-        vk::Pipeline pipeline = compile_pipeline(request->type, request->render_pass, *request->vertex_program_gxm, *request->fragment_program_gxm, *request->get_record(), request->hints, mem);
+        vk::Pipeline pipeline{};
+        const auto compile_started = std::chrono::steady_clock::now();
+        try {
+            pipeline = compile_pipeline(request->type, request->render_pass, *request->vertex_program_gxm, *request->fragment_program_gxm, *request->get_record(), request->hints, mem);
+        } catch (const std::exception &error) {
+            // Publish failure and release the guest program references even if
+            // shader translation/module creation throws. Otherwise the worker
+            // terminates the process or leaves required draws waiting forever.
+            LOG_ERROR("Async pipeline exception: key={:016X} error={}", request->key, error.what());
+        }
+        LOG_DEBUG("Async pipeline completed: key={:016X} success={} elapsed_ms={:.2f}",
+            request->key, static_cast<bool>(pipeline),
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compile_started).count());
+        request->vertex_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
+        request->fragment_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
+
+        const auto time_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        next_pipeline_cache_save = time_s + pipeline_cache_save_delay;
+
+        if (pipeline)
+            state.shaders_count_compiled++;
+
+        // Publish only after releasing guest references and recording completion.
         {
             std::lock_guard lock(failed_pipelines_mutex);
             if (!pipeline)
@@ -758,14 +793,6 @@ void PipelineCache::compiler_thread(MemState &mem) {
         }
 
         pipeline_ready.notify_all();
-
-        request->vertex_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
-        request->fragment_program_gxm->compile_threads_on.fetch_sub(1, std::memory_order_release);
-
-        const auto time_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        next_pipeline_cache_save = time_s + pipeline_cache_save_delay;
-
-        state.shaders_count_compiled++;
 
         delete request;
     }
@@ -791,13 +818,20 @@ vk::Pipeline PipelineCache::compile_pipeline(SceGxmPrimitiveType type, vk::Rende
 
     const vk::PipelineShaderStageCreateInfo vertex_shader = retrieve_shader(vertex_program_gxm.program.get(mem), vertex_program.hash, true, fragment_program_gxm.is_maskupdate, mem, hints);
     const vk::PipelineShaderStageCreateInfo fragment_shader = retrieve_shader(gxm_fragment_shader, fragment_program.hash, false, fragment_program_gxm.is_maskupdate, mem, hints, record.is_gamma_corrected);
-    const vk::PipelineShaderStageCreateInfo shader_stages[] = { vertex_shader, fragment_shader };
+    vk::PipelineShaderStageCreateInfo shader_stages[] = { vertex_shader, fragment_shader };
     // disable the fragment shader if gxm asks us to
     const bool is_fragment_disabled = record.front_side_fragment_program_mode == SCE_GXM_FRAGMENT_PROGRAM_DISABLED || gxm_fragment_shader->has_no_effect();
     const uint32_t shader_stage_count = is_fragment_disabled ? 1U : 2U;
 
     const vk::PipelineInputAssemblyStateCreateInfo input_assembly{
-        .topology = translate_primitive(type)
+        .topology = translate_primitive(type),
+#ifdef __APPLE__
+        // The upload path expands draws using the restart sentinel to lists.
+        // All remaining strips/fans can enable Metal's mandatory restart
+        // without losing a guest vertex. Mapped uploads keep their old path.
+        .primitiveRestartEnable = !state.features.enable_memory_mapping
+            && (type == SCE_GXM_PRIMITIVE_TRIANGLE_STRIP || type == SCE_GXM_PRIMITIVE_TRIANGLE_FAN)
+#endif
     };
 
     const bool two_sided = (record.two_sided == SCE_GXM_TWO_SIDED_ENABLED);
@@ -896,10 +930,26 @@ vk::Pipeline PipelineCache::compile_pipeline(SceGxmPrimitiveType type, vk::Rende
         pipeline = nullptr;
         result = state.device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &pipeline);
     }
+    if (result == vk::Result::eErrorInitializationFailed || result == vk::Result::eErrorUnknown) {
+        // MoltenVK can accept a cached SPIR-V module but reject it later when
+        // compiling MSL for a pipeline. Rebuild both stages once from live GXP.
+        // Keep old modules alive until workers stop: another compile may use them.
+        if (pipeline)
+            state.device.destroyPipeline(pipeline);
+        pipeline = nullptr;
+        LOG_WARN("Rebuilding rejected pipeline shaders from GXP: vertex={} fragment={}",
+            hex_string(vertex_program.hash), hex_string(fragment_program.hash));
+        shader_stages[0] = retrieve_shader(vertex_program_gxm.program.get(mem), vertex_program.hash, true,
+            fragment_program_gxm.is_maskupdate, mem, hints, false, true);
+        if (shader_stage_count == 2)
+            shader_stages[1] = retrieve_shader(gxm_fragment_shader, fragment_program.hash, false,
+                fragment_program_gxm.is_maskupdate, mem, hints, record.is_gamma_corrected, true);
+        result = state.device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &pipeline);
+    }
     if (result != vk::Result::eSuccess) {
         if (pipeline)
             state.device.destroyPipeline(pipeline);
-        LOG_ERROR("Pipeline rejected: result={} vertex={} fragment={} primitive={} stages={} attributes={} bindings={}. Draws using this pipeline will be skipped for this session.",
+        LOG_ERROR("Pipeline rejected: result={} vertex={} fragment={} primitive={} stages={} attributes={} bindings={}. The required draw cannot be submitted.",
             vk::to_string(result), hex_string(vertex_program.hash), hex_string(fragment_program.hash),
             static_cast<uint32_t>(type), shader_stage_count, vertex_input.vertexAttributeDescriptionCount,
             vertex_input.vertexBindingDescriptionCount);
@@ -936,26 +986,26 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
     const vk::Pipeline pipeline_compiling = std::bit_cast<vk::Pipeline, uint64_t>(~0ULL);
     // if the pipeline is in the pipeline cache, we can expect its creation time to be almost instantaneous
     bool already_in_cache = false;
-    // Fresh or infrequently updated targets may be sampled for many frames.
-    // Dropping their first draw can leave permanent holes in later passes.
-    const bool may_defer = consider_for_async && can_use_deferred_compilation && use_async_compilation;
+    // Every draw contributes to the frame, including particles and offscreen
+    // effects. Async compilation changes where work runs, never whether it draws.
+    const auto require_pipeline = [key](vk::Pipeline pipeline) {
+        if (!pipeline)
+            throw std::runtime_error(fmt::format("Required graphics pipeline {:016X} failed; see shader diagnostics in the log", key));
+        return pipeline;
+    };
 
     // Also synchronizes the worker's result publication before reading it.
     std::unique_lock failure_lock(failed_pipelines_mutex);
     if (failed_pipelines.contains(key))
-        return nullptr;
+        return require_pipeline(nullptr);
     auto it = pipelines.find(key);
     if (it != pipelines.end()) {
         if (it->second != nullptr) {
             if (it->second == pipeline_compiling) {
-                if (may_defer)
-                    return nullptr;
-                // A previously deferred pipeline can become required by a
-                // full-screen draw or a new target. Wait for its existing job;
-                // never duplicate compilation or drop the required draw.
+                // Wait for the existing job; never submit an incomplete frame.
                 pipeline_ready.wait(failure_lock, [&] { return it->second != pipeline_compiling; });
             }
-            return it->second;
+            return require_pipeline(it->second);
         }
         already_in_cache = true;
     } else {
@@ -973,7 +1023,7 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
     context.shader_hints.color_format = record.color_surface.colorFormat;
     context.shader_hints.attributes = &vertex_program_gxm.attributes;
 
-    const bool compile_pipeline_async = !already_in_cache && may_defer;
+    const bool compile_pipeline_async = !already_in_cache && consider_for_async && use_async_compilation;
 
     if (compile_pipeline_async) {
         // create the pipeline compile request
@@ -996,15 +1046,22 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
 
         pipeline_compile_queue.enqueue(pipeline_compile_queue_token, request);
 
-        return nullptr;
+        failure_lock.lock();
+        pipeline_ready.wait(failure_lock, [&] { return it->second != pipeline_compiling; });
+        return require_pipeline(it->second);
     } else {
         // can't wait, compile it right now
-        vk::Pipeline result = compile_pipeline(type, render_pass, vertex_program_gxm, fragment_program_gxm, record, context.shader_hints, mem);
+        vk::Pipeline result{};
+        try {
+            result = compile_pipeline(type, render_pass, vertex_program_gxm, fragment_program_gxm, record, context.shader_hints, mem);
+        } catch (const std::exception &error) {
+            LOG_ERROR("Required pipeline exception: key={:016X} error={}", key, error.what());
+        }
 
         const auto time_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         next_pipeline_cache_save = time_s + pipeline_cache_save_delay;
 
-        if (!already_in_cache)
+        if (result && !already_in_cache)
             state.shaders_count_compiled++;
 
         {
@@ -1013,8 +1070,9 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
                 failed_pipelines.insert(key);
             it->second = result;
         }
+        pipeline_ready.notify_all();
 
-        return result;
+        return require_pipeline(result);
     }
 }
 
@@ -1042,7 +1100,19 @@ vk::ShaderModule PipelineCache::precompile_shader(const Sha256Hash &hash, bool s
         .pCode = source.data()
     };
 
-    vk::ShaderModule shader = state.device.createShaderModule(shader_info);
+    vk::ShaderModule shader;
+    try {
+        shader = state.device.createShaderModule(shader_info);
+    } catch (const vk::SystemError &error) {
+        if (error.code().value() == static_cast<int>(vk::Result::eErrorOutOfHostMemory)
+            || error.code().value() == static_cast<int>(vk::Result::eErrorOutOfDeviceMemory)
+            || error.code().value() == static_cast<int>(vk::Result::eErrorDeviceLost))
+            throw;
+        // Warmup may fail without a live GXP program. The first required draw
+        // will regenerate this module from GXP instead of rereading this cache.
+        LOG_WARN("Cached shader {} rejected; rebuilding from GXP on use: {}", hex_string(hash), error.what());
+        return nullptr;
+    }
     {
         std::lock_guard<std::mutex> guard(shaders_mutex);
         shaders[hash] = shader;

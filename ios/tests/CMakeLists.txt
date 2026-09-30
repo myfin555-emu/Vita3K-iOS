@@ -54,6 +54,12 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME thread_wait_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ThreadWaitTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(thread_wait_tests PROPERTIES TIMEOUT 30)
 
+add_test(NAME notification_wait_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/NotificationWaitTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(notification_wait_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME shader_counter_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ShaderCounterTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(shader_counter_tests PROPERTIES TIMEOUT 30)
+
 add_executable(automatic_jit_tests AutomaticJitTests.cpp)
 target_compile_features(automatic_jit_tests PRIVATE cxx_std_17)
 target_include_directories(automatic_jit_tests PRIVATE ../../vita3k/cpu/include)
@@ -87,3 +93,6 @@ set_tests_properties(renderer_resource_tests PROPERTIES TIMEOUT 30)
 
 add_test(NAME settings_snapshot_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/SettingsSnapshotTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(settings_snapshot_tests PROPERTIES TIMEOUT 30)
+
+add_test(NAME renderer_failure_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/RendererFailureTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(renderer_failure_tests PROPERTIES TIMEOUT 30)

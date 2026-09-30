@@ -741,7 +741,7 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
         .async_pipeline_compilation = current.async_pipeline_compilation,
         .anisotropic_filtering = current.anisotropic_filtering,
         .high_accuracy = current.high_accuracy,
-        .surface_sync = !current.disable_surface_sync,
+        .surface_sync = current.high_accuracy || !current.disable_surface_sync,
         .double_buffer = (current.memory_mapping == "double-buffer"),
         .bind_cross = binds_sized ? face_button_slot_for_physical(binds[SDL_GAMEPAD_BUTTON_SOUTH]) : 0,
         .bind_circle = binds_sized ? face_button_slot_for_physical(binds[SDL_GAMEPAD_BUTTON_EAST]) : 1,
@@ -2283,7 +2283,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         current.async_pipeline_compilation = settings.async_pipeline_compilation;
         current.anisotropic_filtering = settings.anisotropic_filtering;
         current.high_accuracy = settings.high_accuracy;
-        current.disable_surface_sync = !settings.surface_sync;
+        current.disable_surface_sync = !(settings.high_accuracy || settings.surface_sync);
         current.memory_mapping = ios_memory_mapping_for(settings);
         current.audio_backend = "SDL";
     };
@@ -2304,7 +2304,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     desired.async_pipeline_compilation = settings.async_pipeline_compilation;
     desired.anisotropic_filtering = settings.anisotropic_filtering;
     desired.high_accuracy = settings.high_accuracy;
-    desired.disable_surface_sync = !settings.surface_sync;
+    desired.disable_surface_sync = !(settings.high_accuracy || settings.surface_sync);
     desired.memory_mapping = ios_memory_mapping_for(settings);
     desired.audio_backend = "SDL";
     // See face_button_slot_for_physical/face_button_physical_for_slot above
@@ -2348,7 +2348,7 @@ void apply_game_session_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &s
     current.async_pipeline_compilation = settings.async_pipeline_compilation;
     current.anisotropic_filtering = settings.anisotropic_filtering;
     current.high_accuracy = settings.high_accuracy;
-    current.disable_surface_sync = !settings.surface_sync;
+    current.disable_surface_sync = !(settings.high_accuracy || settings.surface_sync);
     current.memory_mapping = ios_memory_mapping_for(settings);
     emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
     LOG_INFO("Per-game settings override active: res x{} vsync={} fps=60 cpu_opt={} ngs={} async={} aniso={} high_accuracy={} surface_sync={} double_buffer={}",
@@ -3009,8 +3009,13 @@ int main(int argc, char *argv[]) {
     Uint64 playtime_checkpoint_ms = perf_last_ms;
     Uint64 memory_checkpoint_ms = perf_last_ms;
 
+    std::string rendering_error;
     bool running = true;
     while (running) {
+        if (emuenv->renderer->render_failed.load(std::memory_order_acquire)) {
+            rendering_error = emuenv->renderer->render_error;
+            break;
+        }
         vita3k_ios_update_keyboard(*emuenv);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -3166,6 +3171,9 @@ int main(int argc, char *argv[]) {
     emuenv->audio.audio_backend.clear();
     restore_global_config();
 
+    if (!rendering_error.empty())
+        vita3k_ios_show_boot_error("The game could not finish rendering this frame. "
+            "Shader and graphics details are in tsubomi.log. " + rendering_error);
     LOG_INFO("Returning to game library");
     } // while (!app_terminating)
 

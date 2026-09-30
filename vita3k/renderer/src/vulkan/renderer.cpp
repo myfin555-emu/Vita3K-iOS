@@ -1026,7 +1026,7 @@ void VKState::late_init(const Config &cfg, const std::string_view game_id, MemSt
     if (!features.enable_memory_mapping) {
         features.support_unmapped_surface_sync = true;
         LOG_INFO("iOS: surface sync uses staging-buffer readback (no memory mapping); disable-surface-sync={}",
-            cfg.current_config.disable_surface_sync);
+            cfg.current_config.disable_surface_sync && !cfg.current_config.high_accuracy);
     }
 #endif
 
@@ -1313,10 +1313,12 @@ void VKState::swap_window() {
 
     // look once a frame if we need to save the pipeline cache
     const auto time_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    if (time_s >= pipeline_cache.next_pipeline_cache_save) {
+    auto save_at = pipeline_cache.next_pipeline_cache_save.load(std::memory_order_relaxed);
+    if (time_s >= save_at && pipeline_cache.next_pipeline_cache_save.compare_exchange_strong(
+            save_at, std::numeric_limits<uint64_t>::max(), std::memory_order_relaxed)) {
+        // Claim this deadline before saving. A compiler finishing during the
+        // save must retain its new deadline so its pipeline reaches disk too.
         pipeline_cache.save_pipeline_cache();
-
-        pipeline_cache.next_pipeline_cache_save = std::numeric_limits<uint64_t>::max();
     }
 }
 

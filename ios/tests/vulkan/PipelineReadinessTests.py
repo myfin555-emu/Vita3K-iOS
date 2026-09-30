@@ -25,6 +25,8 @@ pipeline = source('vita3k/renderer/src/vulkan/pipeline_cache.cpp')
 scene = source('vita3k/renderer/src/vulkan/scene.cpp')
 code = r'''
 #include <vkutil/vulkan.h>
+#define FMT_HEADER_ONLY
+#include <fmt/format.h>
 #include <atomic>
 #include <bit>
 #include <cassert>
@@ -37,6 +39,9 @@ code = r'''
 #include <queue>
 #include <set>
 #include <thread>
+#include <stdexcept>
+#define LOG_ERROR(...) ((void)0)
+#define LOG_DEBUG(...) ((void)0)
 using namespace std::chrono_literals;
 struct MemState {};
 enum SceGxmPrimitiveType : uint32_t { Triangles };
@@ -85,7 +90,7 @@ struct Queue {
 namespace moodycamel { struct ConsumerToken { explicit ConsumerToken(Queue &) {} operator int() const {return 0;} }; }
 struct PipelineCache {
     State state;
-    bool use_async_compilation = true, can_use_deferred_compilation = false;
+    bool use_async_compilation = false;
     std::mutex failed_pipelines_mutex;
     std::condition_variable pipeline_ready;
     std::set<uint64_t> failed_pipelines;
@@ -96,10 +101,11 @@ struct PipelineCache {
     std::atomic<uint64_t> next_pipeline_cache_save{0};
     std::atomic<int> compiled{0};
     std::shared_future<void> gate;
-    bool fail = false;
+    bool fail = false, throw_compile = false;
     vk::Pipeline compile_pipeline(SceGxmPrimitiveType, vk::RenderPass, SceGxmVertexProgram &, SceGxmFragmentProgram &, const GxmRecordState &record, shader::Hints, MemState &) {
         ++compiled;
         if (gate.valid()) gate.wait();
+        if (throw_compile) throw std::runtime_error("synthetic shader module failure");
         return fail ? vk::Pipeline{} : std::bit_cast<vk::Pipeline>(record.serial);
     }
     void compiler_thread(MemState &);
@@ -124,8 +130,8 @@ struct DrawContext {
 void retry_draw(DrawContext &context, SceGxmPrimitiveType type, MemState &mem) {
     int instance_count = 1, count = 6;
 '''
-start = scene.index('    // Resolve first')
-end = scene.index('    // can happen with asynchronous', start)
+start = scene.index('    // Resolve every required pipeline')
+end = scene.index('    const SceGxmFragmentProgram &gxm_fragment_program', start)
 code += scene[start:end] + '\n}\n'
 code += r'''
 int main() {
@@ -137,40 +143,54 @@ int main() {
     VKContext context{{1, {&gxm_fragment}, {&vertex}}};
     SceGxmPrimitiveType type = Triangles;
     PipelineCache cache;
-    // A first-use render target must never lose its initial draw.
+    // Synchronous first-use draws must return a valid pipeline.
     assert(cache.retrieve_pipeline(context, type, true, mem));
     assert(cache.compiled == 1 && cache.pipeline_compile_queue.requests.empty());
-    cache.can_use_deferred_compilation = true;
+    cache.use_async_compilation = true;
     context.record.serial = 2;
     std::promise<void> release;
     cache.gate = release.get_future().share();
-    assert(!cache.retrieve_pipeline(context, type, true, mem));
     std::thread worker([&] { cache.compiler_thread(mem); });
-    assert(!cache.retrieve_pipeline(context, type, true, mem));
-    // A pending job now required by a full-screen quad must be awaited.
-    auto required = std::async(std::launch::async, [&] { return cache.retrieve_pipeline(context, type, false, mem); });
-    assert(required.wait_for(30ms) == std::future_status::timeout);
+    auto first = std::async(std::launch::async, [&] { return cache.retrieve_pipeline(context, type, true, mem); });
+    assert(first.wait_for(30ms) == std::future_status::timeout);
+    // Another required draw must share the in-flight compile instead of dropping.
+    auto second = std::async(std::launch::async, [&] { return cache.retrieve_pipeline(context, type, true, mem); });
+    assert(second.wait_for(30ms) == std::future_status::timeout);
     release.set_value();
-    assert(required.wait_for(2s) == std::future_status::ready && required.get());
-    cache.pipeline_compile_queue.enqueue(0, nullptr);
-    worker.join();
-    assert(cache.compiled == 2);
+    assert(first.wait_for(2s) == std::future_status::ready && first.get());
+    assert(second.wait_for(2s) == std::future_status::ready && second.get());
+    assert(cache.compiled == 2 && cache.state.shaders_count_compiled == 2);
     assert(vertex.compile_threads_on == 0 && gxm_fragment.compile_threads_on == 0);
-    // Failed publication must also release a waiter and must not recompile.
+    cache.gate = {};
+    auto fails_explicitly = [&] {
+        bool failed = false;
+        try { cache.retrieve_pipeline(context, type, true, mem); }
+        catch (const std::runtime_error &) { failed = true; }
+        assert(failed); // Failure must not become a successful empty draw.
+    };
     context.record.serial = 3;
     cache.fail = true;
-    std::promise<void> failure_release;
-    cache.gate = failure_release.get_future().share();
-    assert(!cache.retrieve_pipeline(context, type, true, mem));
-    std::thread failed_worker([&] { cache.compiler_thread(mem); });
-    cache.can_use_deferred_compilation = false;
-    auto failed = std::async(std::launch::async, [&] { return cache.retrieve_pipeline(context, type, true, mem); });
-    assert(failed.wait_for(30ms) == std::future_status::timeout);
-    failure_release.set_value();
-    assert(failed.wait_for(2s) == std::future_status::ready && !failed.get());
+    fails_explicitly();
+    const auto attempts = cache.compiled.load();
+    fails_explicitly();
+    assert(cache.compiled == attempts);
+    context.record.serial = 4;
+    cache.throw_compile = true;
+    fails_explicitly();
+    assert(vertex.compile_threads_on == 0 && gxm_fragment.compile_threads_on == 0);
+    assert(cache.state.shaders_count_compiled == 2);
+    // The same worker remains alive and processes the next valid job.
+    context.record.serial = 5;
+    cache.throw_compile = cache.fail = false;
+    assert(cache.retrieve_pipeline(context, type, true, mem));
+    assert(cache.state.shaders_count_compiled == 3);
     cache.pipeline_compile_queue.enqueue(0, nullptr);
-    failed_worker.join();
-    assert(!cache.retrieve_pipeline(context, type, true, mem) && cache.compiled == 3);
+    worker.join();
+    cache.use_async_compilation = false;
+    cache.throw_compile = true;
+    context.record.serial = 6;
+    fails_explicitly();
+    assert(cache.state.shaders_count_compiled == 3);
     DrawContext draw;
     retry_draw(draw, type, mem);
     assert(draw.current_pipeline && draw.state.pipeline_cache.attempts == 1);
@@ -182,6 +202,6 @@ with tempfile.TemporaryDirectory() as tmp:
     path = pathlib.Path(tmp)
     (path / 'test.cpp').write_text(code)
     subprocess.run([sys.argv[1], '-std=c++20', '-pthread', '-UNDEBUG', str(path / 'test.cpp'),
-                    '-I' + str(repo / 'vita3k/vkutil/include'), '-I' + sys.argv[2], '-o', str(path / 'test')], check=True)
+                    '-I' + str(repo / 'vita3k/vkutil/include'), '-I' + str(repo / 'external/fmt/include'), '-I' + sys.argv[2], '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True, timeout=10)
 print('Production pipeline readiness checks passed')

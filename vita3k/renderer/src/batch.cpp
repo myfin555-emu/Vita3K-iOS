@@ -30,6 +30,8 @@
 #include <overlay/shader_precompile_progress.h>
 #include <util/log.h>
 
+#include <chrono>
+#include <exception>
 #include <memory>
 #include <thread>
 
@@ -182,7 +184,7 @@ void reset_command_list(CommandList &command_list) {
     command_list.last = nullptr;
 }
 
-static void render_loop(renderer::State &state, DisplayState &display, GxmState &gxm, MemState &mem, Config &config) {
+static void render_loop(renderer::State &state, DisplayState &display, GxmState &gxm, MemState &mem, Config &config) try {
     if (state.precompile_requested) {
         auto progress_overlay = state.overlay_manager
             ? state.overlay_manager->create<overlay::shader_precompile_progress>()
@@ -197,6 +199,9 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
         const int total = static_cast<int>(state.precompile_queue.size());
         state.precompile_total = total;
 
+        // Present progress at most 30 times per second. Presenting every cache
+        // entry turns a cheap shader-module load into a full vsync wait.
+        auto next_progress_frame = std::chrono::steady_clock::now();
         for (int i = 0; i < total && !state.render_abort.load(std::memory_order_relaxed); ++i) {
             if (!state.set_current())
                 break;
@@ -204,10 +209,11 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
             state.precompile_shader(state.precompile_queue[i]);
             state.precompile_progress = i + 1;
 
-            if (progress_overlay) {
+            if (progress_overlay && (i + 1 == total || std::chrono::steady_clock::now() >= next_progress_frame)) {
                 progress_overlay->set_progress(i + 1, total);
                 state.render_frame(display, gxm, mem);
                 state.swap_window();
+                next_progress_frame = std::chrono::steady_clock::now() + std::chrono::milliseconds(33);
             }
         }
 
@@ -280,10 +286,21 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
     }
 
     state.done_current();
+} catch (const std::exception &error) {
+    // Never present a frame after a required shader/texture operation failed.
+    // Publish the error to the frontend so the session can shut down normally.
+    LOG_ERROR("Rendering failed: {}", error.what());
+    state.render_error = error.what();
+    state.render_failed.store(true, std::memory_order_release);
+    state.render_abort = true;
+    state.command_buffer_queue.abort();
+    state.done_current();
 }
 
 void start_render_thread(State &state, DisplayState &display, GxmState &gxm, MemState &mem, Config &config) {
     state.render_abort = false;
+    state.render_error.clear();
+    state.render_failed.store(false, std::memory_order_relaxed);
     state.render_thread = std::make_unique<std::thread>(render_loop, std::ref(state), std::ref(display), std::ref(gxm), std::ref(mem), std::ref(config));
 }
 

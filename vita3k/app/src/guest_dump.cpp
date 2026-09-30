@@ -97,10 +97,10 @@ static void dump_display_state(EmuEnvState &emuenv) {
     }
 
     if (emuenv.renderer)
-        LOG_INFO("Renderer: should_display={} host_frames_presented={} batches_processed={} pipelines_compiled={}",
+        LOG_INFO("Renderer: should_display={} host_frames_presented={} batches_processed={} pipelines_since_overlay_update={}",
             emuenv.renderer->should_display, emuenv.renderer->host_frames_presented.load(),
             emuenv.renderer->batches_processed.load(std::memory_order_relaxed),
-            emuenv.renderer->shaders_count_compiled);
+            emuenv.renderer->shaders_count_compiled.load(std::memory_order_relaxed));
     LOG_INFO("Memory: access_violation_traps={}", emuenv.mem.access_violations_handled.load(std::memory_order_relaxed));
 }
 

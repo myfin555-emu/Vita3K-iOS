@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <renderer/surface_copy_reuse.h>
 #include <renderer/vulkan/color_surface.h>
 #include <renderer/vulkan/surface_cache.h>
 
@@ -385,10 +386,8 @@ SurfaceRetrieveResult VKSurfaceCache::retrieve_color_surface_for_framebuffer(Mem
 
             last_written_surface = &info;
 
-            // if this surface has not been rendered to for the last 60 frames, consider it is not safe not to render all shaders to it
-            constexpr uint64_t big_delay_between_frames = 60;
-            state.pipeline_cache.can_use_deferred_compilation = context->frame_timestamp - info.last_frame_rendered < big_delay_between_frames;
             info.last_frame_rendered = context->frame_timestamp;
+            ++info.content_generation;
 
             return { retrieve_color_attachment_view(info, vk_format), &info.texture };
         }
@@ -404,6 +403,7 @@ SurfaceRetrieveResult VKSurfaceCache::retrieve_color_surface_for_framebuffer(Mem
 
     color_surface_queue.set_as_mru(&info_added);
     info_added.last_frame_rendered = context->frame_timestamp;
+    ++info_added.content_generation;
 
     color_address_lookup[address] = &info_added;
 
@@ -465,9 +465,6 @@ SurfaceRetrieveResult VKSurfaceCache::retrieve_color_surface_for_framebuffer(Mem
     } else {
         protect_surface(mem, info_added);
     }
-
-    // it's not impossible that this surface will be rendered once and only used after, so do not skip any shader on it
-    state.pipeline_cache.can_use_deferred_compilation = false;
 
     return { retrieve_color_attachment_view(info_added, vk_format), &info_added.texture };
 }
@@ -655,8 +652,13 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
                 && casted_vec[i].texture.format == vk_format && casted_vec[i].components == resulting_swizzle) {
                 casted = &casted_vec[i];
 
-                if (casted->scene_timestamp == scene_timestamp) {
-                    // already copied for this scene, don't do it again
+                if (can_reuse_surface_copy(casted->source_generation, info.content_generation,
+                        casted->scene_timestamp, scene_timestamp, casted->copied_from_active_target, is_same_image)) {
+                    // Read-only sources retain their exact cropped/cast pixels across scenes.
+                    // Feedback copies must keep the original per-scene lifetime.
+#ifdef VITA3K_PLATFORM_IOS
+                    ++reinterpret_cast<VKContext *>(state.context)->diagnostic_surface_copy_reuses;
+#endif
                     return TextureLookupResult{
                         casted->texture.view,
                         casted->texture.layout,
@@ -697,6 +699,11 @@ std::optional<TextureLookupResult> VKSurfaceCache::retrieve_color_surface_as_tex
         }
 
         casted->scene_timestamp = scene_timestamp;
+        casted->source_generation = info.content_generation;
+        casted->copied_from_active_target = is_same_image;
+#ifdef VITA3K_PLATFORM_IOS
+        ++context->diagnostic_surface_copies;
+#endif
 
         // Include storage-image writes from framebuffer fetch. The prerender
         // buffer runs after previous scenes, but still needs a memory dependency.
@@ -1169,9 +1176,6 @@ Framebuffer &VKSurfaceCache::retrieve_framebuffer_handle(MemState &mem, SceGxmCo
 
     if (!color && !depth_stencil)
         LOG_ERROR_ONCE("Depth stencil and color surface are both null!");
-
-    // might get modified by retrieve_color_surface_for_framebuffer
-    state.pipeline_cache.can_use_deferred_compilation = true;
 
     // First retrieve separately the color surface and ds surface
     SurfaceRetrieveResult color_result;

@@ -31,6 +31,8 @@
 #include <util/align.h>
 #include <vkutil/vkutil.h>
 
+#include <algorithm>
+
 namespace renderer::vulkan {
 
 // return if this format can be used to read a depth stencil buffer
@@ -548,8 +550,13 @@ void VKTextureCache::upload_texture_impl(SceGxmTextureBaseFormat base_format, ui
     }
 
     if (staging_buffer.used_so_far + upload_size > staging_buffer.buffer.size) {
-        LOG_ERROR("Staging buffer size left ({}) is too small for texture size {}!", staging_buffer.buffer.size - staging_buffer.used_so_far, upload_size);
-        return;
+        // The mip-chain estimate can be too small for narrow textures. Keep
+        // prior uploads alive until this frame completes and continue recording
+        // into a fresh buffer without discarding the image's earlier mip levels.
+        state.frame().destroy_queue.add_buffer(staging_buffer.buffer);
+        staging_buffer.buffer.size = align(std::max<vk::DeviceSize>(upload_size, current_texture->memory_needed), 16);
+        staging_buffer.buffer.init_buffer(vk::BufferUsageFlagBits::eTransferSrc, vkutil::vma_mapped_alloc);
+        staging_buffer.used_so_far = 0;
     }
 
     memcpy(static_cast<uint8_t *>(staging_buffer.buffer.mapped_data) + staging_buffer.used_so_far, text_data, upload_size);

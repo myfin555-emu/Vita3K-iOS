@@ -23,6 +23,7 @@
 #include <vkutil/vkutil.h>
 
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <limits>
 #include <map>
@@ -92,12 +93,14 @@ private:
     SingleFlight<Sha256Hash> shader_generation;
     // because of multithreading, we want the pointers to remain stable
     unordered_map_stable<Sha256Hash, vk::ShaderModule> shaders;
+    // Replaced modules may still be in another compiler thread's create call.
+    std::vector<vk::ShaderModule> retired_shaders;
     unordered_map_stable<uint64_t, vk::Pipeline> pipelines;
     std::mutex failed_pipelines_mutex;
     std::condition_variable pipeline_ready;
     std::set<uint64_t> failed_pipelines;
 
-    vk::PipelineShaderStageCreateInfo retrieve_shader(const SceGxmProgram *program, const Sha256Hash &hash, bool is_vertex, bool maskupdate, MemState &mem, const shader::Hints &hints, bool is_srgb = false);
+    vk::PipelineShaderStageCreateInfo retrieve_shader(const SceGxmProgram *program, const Sha256Hash &hash, bool is_vertex, bool maskupdate, MemState &mem, const shader::Hints &hints, bool is_srgb = false, bool regenerate = false);
 
     // queue containing request sent by the main thread to the compile threads
     PipelineCompileQueue pipeline_compile_queue;
@@ -113,11 +116,7 @@ public:
     // Shared by pipeline creation and Metal vertex upload so their strides agree.
     vk::PipelineVertexInputStateCreateInfo get_vertex_input_state(const SceGxmVertexProgram &vertex_program, MemState &mem);
     // if not 0, next time the pipeline cache should be saved (in seconds since epoch)
-    uint64_t next_pipeline_cache_save = std::numeric_limits<uint64_t>::max();
-
-    // modified by the surface cache, estimates if it is safe to use async pipeline compilation
-    // (i.e that it does not causes permanent graphical issues)
-    bool can_use_deferred_compilation = false;
+    std::atomic<uint64_t> next_pipeline_cache_save{std::numeric_limits<uint64_t>::max()};
 
     vk::DescriptorSetLayout uniforms_layout;
     // used for the mask, color attachment

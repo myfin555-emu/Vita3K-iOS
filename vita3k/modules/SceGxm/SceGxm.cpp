@@ -2984,20 +2984,21 @@ EXPORT(int, _sceGxmMidSceneFlush, SceGxmContext *immediateContext, uint32_t flag
 
 EXPORT(int, sceGxmNotificationWait, const SceGxmNotification *notification) {
     TRACY_FUNC(sceGxmNotificationWait, notification);
-    if (!notification) {
+    if (!notification || !notification->address) {
         return RET_ERROR(SCE_GXM_ERROR_INVALID_POINTER);
     }
 
     std::uint32_t volatile *value = notification->address.get(emuenv.mem);
     const std::uint32_t target_value = notification->value;
 
+#ifdef VITA3K_PLATFORM_IOS
+    const auto wait_started = std::chrono::steady_clock::now();
+#endif
     std::unique_lock<std::mutex> lock(emuenv.renderer->notification_mutex);
     if (*value != target_value) {
-        // This wait is unbounded upstream and leaves the guest thread in run
-        // status, so a notification that is never signalled looks like a hard
-        // game freeze with no log evidence. Wait in slices and log if the
-        // notification stays unsignalled for seconds; on iOS give up after
-        // ten seconds so the title glitches instead of freezing forever.
+        // Completion belongs to the GPU. A slow shader/scene must never be
+        // reported complete just because a host timeout expired: the guest
+        // can immediately overwrite resources that the GPU still uses.
         const auto pred = [&]() { return *value == target_value || emuenv.display.abort.load(); };
         int waited_seconds = 0;
         while (!pred()) {
@@ -3007,15 +3008,30 @@ EXPORT(int, sceGxmNotificationWait, const SceGxmNotification *notification) {
             if (waited_seconds == 2 || waited_seconds == 10)
                 LOG_WARN("sceGxmNotificationWait stuck for {}s: addr=0x{:X} value={} target={} (TID {})",
                     waited_seconds, notification->address.address(), *value, target_value, thread_id);
-#ifdef VITA3K_PLATFORM_IOS
-            if (waited_seconds >= 10) {
-                LOG_ERROR("sceGxmNotificationWait giving up after {}s to avoid a permanent freeze", waited_seconds);
-                break;
-            }
-#endif
         }
     }
 
+#ifdef VITA3K_PLATFORM_IOS
+    // This measures the guest's wait for renderer/GPU completion, not GPU
+    // execution alone. Aggregate per caller to avoid logging every scene.
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(now - wait_started).count();
+    static thread_local auto report_at = now + std::chrono::seconds(5);
+    static thread_local uint64_t calls = 0;
+    static thread_local double total_ms = 0, max_ms = 0;
+    ++calls;
+    total_ms += elapsed_ms;
+    max_ms = std::max(max_ms, elapsed_ms);
+    const bool completed = *value == target_value;
+    lock.unlock();
+    if (now >= report_at) {
+        LOG_INFO("GXM notification waits: thread={} calls={} total_ms={:.2f} max_ms={:.2f} last_completed={}",
+            thread_id, calls, total_ms, max_ms, completed);
+        calls = 0;
+        total_ms = max_ms = 0;
+        report_at = now + std::chrono::seconds(5);
+    }
+#endif
     return 0;
 }
 

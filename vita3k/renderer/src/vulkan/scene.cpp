@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <renderer/strip_indices.h>
 #include <renderer/vulkan/functions.h>
 #include <renderer/vulkan/vertex_stream.h>
 
@@ -311,7 +312,23 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
 #ifdef VITA3K_PLATFORM_IOS
     ++context.diagnostic_draws;
 #endif
-    void *indices_ptr = indices.get(mem);
+    const void *indices_ptr = indices.get(mem);
+#ifdef __APPLE__
+    std::vector<uint32_t> expanded_indices;
+    if (!context.state.features.enable_memory_mapping
+        && (type == SCE_GXM_PRIMITIVE_TRIANGLE_STRIP || type == SCE_GXM_PRIMITIVE_TRIANGLE_FAN)) {
+        const bool fan = type == SCE_GXM_PRIMITIVE_TRIANGLE_FAN;
+        const bool expanded = format == SCE_GXM_INDEX_FORMAT_U16
+            ? expand_non_restarting_indices(std::span{ static_cast<const uint16_t *>(indices_ptr), count }, fan, expanded_indices)
+            : expand_non_restarting_indices(std::span{ static_cast<const uint32_t *>(indices_ptr), count }, fan, expanded_indices);
+        if (expanded) {
+            indices_ptr = expanded_indices.data();
+            count = expanded_indices.size();
+            format = SCE_GXM_INDEX_FORMAT_U32;
+            type = SCE_GXM_PRIMITIVE_TRIANGLES;
+        }
+    }
+#endif
 
     context.check_for_macroblock_change(true);
 
@@ -326,15 +343,12 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
         context.is_first_scene_draw = false;
     }
 
-    // Resolve first so skipped, unqueried draws do not split render passes.
+    // Resolve every required pipeline before changing passes or submitting draws.
     if (context.refresh_pipeline || !context.current_pipeline || type != context.last_primitive) {
         context.refresh_pipeline = false;
         context.last_primitive = type;
 
-        // We don't want to defer cases where we draw a whole quad over the screen as these draws could be necessary
-        // to be able to see anything
-        bool can_be_whole_quad = instance_count == 1 && count <= 6;
-        vk::Pipeline new_pipeline = context.state.pipeline_cache.retrieve_pipeline(context, type, !can_be_whole_quad, mem);
+        vk::Pipeline new_pipeline = context.state.pipeline_cache.retrieve_pipeline(context, type, true, mem);
 
         if (new_pipeline != context.current_pipeline) {
             context.current_pipeline = new_pipeline;
@@ -342,16 +356,6 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
             if (new_pipeline != nullptr)
                 context.render_cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, context.current_pipeline);
         }
-    }
-
-    // can happen with asynchronous pipeline compilation
-    if (context.current_pipeline == nullptr) {
-#ifdef VITA3K_PLATFORM_IOS
-        ++context.diagnostic_skipped_draws;
-#endif
-        // A visibility query still needs its empty result recorded below.
-        if (context.current_visibility_buffer == nullptr || context.current_query_idx == -1)
-            return;
     }
 
     const SceGxmFragmentProgram &gxm_fragment_program = *context.record.fragment_program.get(mem);
@@ -403,9 +407,6 @@ void draw(VKContext &context, SceGxmPrimitiveType type, SceGxmIndexFormat format
         context.render_cmd.beginQuery(context.current_visibility_buffer->query_pool, context.current_query_idx, control_flags);
         context.is_in_query = true;
     }
-
-    if (context.current_pipeline == nullptr)
-        return;
 
     if (config.log_active_shaders) {
         const std::string hash_text_f = hex_string(context.record.fragment_program.get(mem)->renderer_data->hash);
