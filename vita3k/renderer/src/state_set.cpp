@@ -95,6 +95,9 @@ COMMAND_SET_STATE(program) {
         case Backend::Vulkan:
             break;
 
+        case Backend::Metal:
+            break;
+
         default:
             REPORT_MISSING(renderer.current_backend);
             break;
