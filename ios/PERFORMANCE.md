@@ -1,57 +1,51 @@
 # Tsubomi performance & stability guide
 
-This document describes the **stability pack** (`perf/stability-pack`) and the
-settings that keep gameplay smooth on non-jailbroken iPhones/iPads.
+## Stability pack (`perf/stability-pack`)
 
-## What the stability pack does
+1. **Thermal / memory monitoring** during play (watchdog samples every ~2s).
+2. **Frame pacing** with monotonic deadlines (less micro-stutter).
+3. **Surface-sync readback coalescing** — intermediate GPU→CPU post-syncs are
+   dropped while one is in flight. This is the main fix for **God Eater
+   Resurrection** menu FPS (settings / quest UI). Rage Burst 2 was already fine.
 
-1. **Thermal monitoring** – every 2 seconds during a game session the guest
-   watchdog reads `NSProcessInfo.thermalState`. When the device moves to
-   *serious* or *critical*, Tsubomi automatically:
-   - lowers the resolution multiplier (down to 0.5× at critical)
-   - turns off high-accuracy / surface-sync GPU paths
-   - clamps anisotropic filtering to 1×
-   - keeps async pipeline compilation on (reduces shader-compile stutter)
+## God Eater Resurrection menu FPS
 
-2. **Memory pressure** – the same sample tracks RSS and
-   `os_proc_available_memory()`. Above ~85% pressure a GC hint is logged so
-   jetsam kills are easier to diagnose; headroom is written to `tsubomi.log`.
+**Symptom:** Lobby / combat smooth after first shader compile, but opening the
+in-game settings or quest-accept UI tanks FPS until the menu closes.
 
-3. **Frame pacing** – `FrameRateLimiter` uses a monotonic deadline schedule
-   (sleep + short spin) so a single late frame does not cascade into multi-
-   frame sleep debt.
+**Cause:** Resurrection redraws **linear color surfaces** every menu frame.
+Surface sync queued a blocking wait on the previous readback → serialized the
+wait-queue. Not the Tsubomi virtual-pad overlay.
 
-4. **Recommended first-run defaults**
-   - `async_pipeline_compilation = true`
-   - `cpu_opt = true`
-   - `shader_cache = true` / `texture_cache = true`
-   - `high_accuracy = true` (until thermal scales it down)
-   - `anisotropic_filtering = 4`
-   - `resolution_multiplier = 1.0`
-   - `v_sync = true`, FPS limit 60
+**Fix (in this branch):** `VKSurfaceCache::queue_post_surface_sync` skips
+in-flight intermediates (`SurfaceReadback::ready()`).
 
-## Recommended per-game settings
+**Recommended per-game settings** (Library → long-press → Settings):
 
-Apply these from **Library → long-press game → Settings** (per-title overrides).
+| Knob | Value |
+|------|--------|
+| Resolution | 1.0× |
+| High accuracy | On |
+| Async pipelines | On |
+| Anisotropic | 2 |
+| Surface sync | leave enabled (renderer fix handles menu thrash) |
 
-| Title | Title ID (examples) | Resolution | High accuracy | Async pipelines | Aniso | Notes |
-|-------|---------------------|------------|---------------|-----------------|-------|-------|
-| Persona 4 Golden | PCSG00563 / PCSE00120 | 1.0× | On | On | 4 | Keep **double-buffer memory mapping OFF** (garbles models). |
-| God Eater Resurrection | PCSA00026 | 1.0× | On | On | 4 | Benefits from surface-sync; thermal pack already optimises combat stutter. |
-| VA-11 HALL-A | PCSB01012 / others | 1.0× | Off if hot | On | 2 | Light 2D title; lower aniso if device warms up. |
-| Gravity Rush | PCSF00024 | 0.75–1.0× | On | On | 2 | GPU heavy; let thermal scaler drop res when *serious*. |
-| Uncharted Golden Abyss | PCSF00001 | 0.75× | On | On | 2 | Prefer slightly lower res over stutter. |
+Optional XML profiles in-tree (copy to device `config/config_<TitleID>.xml`):
+- `vita3k/config/config_PCSA00026.xml` (US)
+- `vita3k/config/config_PCSB00874.xml` (EU)
 
-### Global tips
+Validation layer must stay **off** in those profiles.
 
-- Enable **JIT** (StikDebug or equivalent) before launch — without JIT games refuse to boot and any partial run is extremely slow.
-- Keep the phone cool (remove thick cases, avoid direct sun). Thermal *critical* will force 0.5× resolution.
-- After a long session, force-quit and relaunch to drop shader/pipeline caches if memory pressure stayed high.
-- Attach `tsubomi.log` when reporting freezes; the watchdog lines `iOS thermal=` and `iOS memory headroom=` show the state right before a problem.
+## Other titles
 
-## Developer notes
+| Title | Notes |
+|-------|--------|
+| God Eater 2 Rage Burst | Usually smooth in menus; no special surface-sync thrash. |
+| Persona 4 Golden | Keep double-buffer memory mapping **off**. |
+| VA-11 HALL-A | Light; aniso 2 is enough. |
 
-- Headers: `ios/include/vita3k_ios/PerformanceOptimizations.h`
-- Implementation: `ios/src/PerformanceOptimizations.mm`
-- Wired from the guest watchdog thread in `ios/src/UpstreamMain.cpp`
-- Built by the upstream-core target in `ios/CMakeLists.txt`
+## Global tips
+
+- JIT required (StikDebug etc.) before boot.
+- Keep the device cool; thermal *critical* forces 0.5× resolution via the watchdog.
+- Attach `tsubomi.log` when reporting issues (`iOS runtime pressure:` lines help).

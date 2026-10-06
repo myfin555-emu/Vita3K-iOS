@@ -17,6 +17,11 @@ class SurfaceReadback {
     std::future<void> finished = completion.get_future();
 
 public:
+    /** Non-blocking: true once complete() has run (or was cancelled). */
+    bool ready() const {
+        return finished.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    }
+
     template <typename IsAborted>
     void wait(IsAborted is_aborted) {
         while (finished.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {

@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Experimental profile from source branch; verify title ID and settings before use -->
+<!--
+  God Eater Resurrection (US: PCSA00026)
+
+  Menu FPS: Resurrection's settings / quest UI rewrites linear color surfaces
+  every frame. Combined with surface sync this used to serialize readbacks and
+  tank FPS until the menu closed. The renderer now drops in-flight intermediate
+  PostSurfaceSyncRequest entries (see queue_post_surface_sync). Rage Burst 2
+  does not need this path as heavily.
+
+  Copy to: <data>/config/config_<app_path>.xml  (app_path is usually the title ID)
+  Or set the same knobs under Library → long-press game → Settings.
+-->
 <config>
     <core modules-mode="1">
-        <!-- LLE Modules for God Eater Resurrection -->
         <lle-modules>
             <module>sceJobQueue</module>
             <module>sceAudio</module>
@@ -20,9 +30,9 @@
         resolution-multiplier="1.0"
         disable-surface-sync="false"
         screen-filter="Bilinear"
-        memory-mapping="double-buffer"
+        memory-mapping="disabled"
         v-sync="true"
-        anisotropic-filtering="4"
+        anisotropic-filtering="2"
         async-pipeline-compilation="true"
         import-textures="false"
         export-textures="false"
@@ -57,7 +67,7 @@
         log-active-shaders="false"
         log-uniforms="false"
         color-surface-debug="false"
-        validation-layer="true"/>
+        validation-layer="false"/>
 
     <network psn-signed-in="false"/>
 </config>

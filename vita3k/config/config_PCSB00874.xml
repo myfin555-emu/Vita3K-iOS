@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- God Eater Resurrection (EU: PCSB00874) — same profile as PCSA00026 -->
+<config>
+    <core modules-mode="1">
+        <lle-modules>
+            <module>sceJobQueue</module>
+            <module>sceAudio</module>
+            <module>sceAvplayer</module>
+            <module>sceSsl</module>
+        </lle-modules>
+    </core>
+    <cpu cpu-opt="true"/>
+    <gpu
+        backend-renderer="Vulkan"
+        gpu-idx="0"
+        high-accuracy="true"
+        resolution-multiplier="1.0"
+        disable-surface-sync="false"
+        screen-filter="Bilinear"
+        memory-mapping="disabled"
+        v-sync="true"
+        anisotropic-filtering="2"
+        async-pipeline-compilation="true"
+        import-textures="false"
+        export-textures="false"
+        export-as-png="false"
+        fps-hack="false"
+        shader-cache="true"
+        spirv-shader="false"
+        texture-cache="true"/>
+    <audio audio-backend="SDL" audio-volume="100" enable-ngs="true"/>
+    <system pstv-mode="false" sys-button="0" sys-lang="0" sys-date-format="0" sys-time-format="0">
+        <ime-langs><lang>4</lang></ime-langs>
+    </system>
+    <emulator file-loading-delay="0" stretch-the-display-area="false" fullscreen-hd-res-pixel-perfect="false"/>
+    <debug log-active-shaders="false" log-uniforms="false" color-surface-debug="false" validation-layer="false"/>
+    <network psn-signed-in="false"/>
+</config>
