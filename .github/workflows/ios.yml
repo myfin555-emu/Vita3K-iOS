@@ -2,35 +2,6 @@ name: Build unsigned iOS IPA
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ios-port
-    paths:
-      - "CMakeLists.txt"
-      - "ios/**"
-      - "vita3k/packages/**"
-      - "vita3k/renderer/**"
-      - "vita3k/shader/**"
-      - "external/**"
-      - ".ci/package-ios.sh"
-      - ".github/workflows/ios.yml"
-  pull_request:
-    paths:
-      - "CMakeLists.txt"
-      - "ios/**"
-      - "vita3k/packages/**"
-      - "vita3k/renderer/**"
-      - "vita3k/shader/**"
-      - "external/**"
-      - ".ci/package-ios.sh"
-      - ".github/workflows/ios.yml"
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ios-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   vitasdk-fixture:
