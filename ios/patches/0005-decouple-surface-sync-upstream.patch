@@ -1,0 +1,38 @@
+--- a/ios/src/UpstreamMain.cpp
++++ b/ios/src/UpstreamMain.cpp
+@@ -743,7 +743,7 @@
+         .async_pipeline_compilation = current.async_pipeline_compilation,
+         .anisotropic_filtering = current.anisotropic_filtering,
+         .high_accuracy = current.high_accuracy,
+-        .surface_sync = current.high_accuracy || !current.disable_surface_sync,
++        .surface_sync = !current.disable_surface_sync,
+         .double_buffer = (current.memory_mapping == "double-buffer"),
+         .bind_cross = binds_sized ? face_button_slot_for_physical(binds[SDL_GAMEPAD_BUTTON_SOUTH]) : 0,
+         .bind_circle = binds_sized ? face_button_slot_for_physical(binds[SDL_GAMEPAD_BUTTON_EAST]) : 1,
+@@ -2283,7 +2283,7 @@
+         current.async_pipeline_compilation = settings.async_pipeline_compilation;
+         current.anisotropic_filtering = settings.anisotropic_filtering;
+         current.high_accuracy = settings.high_accuracy;
+-        current.disable_surface_sync = !(settings.high_accuracy || settings.surface_sync);
++        current.disable_surface_sync = !settings.surface_sync;
+         current.memory_mapping = ios_memory_mapping_for(settings);
+         current.audio_backend = "SDL";
+     };
+@@ -2305,7 +2305,7 @@
+     desired.async_pipeline_compilation = settings.async_pipeline_compilation;
+     desired.anisotropic_filtering = settings.anisotropic_filtering;
+     desired.high_accuracy = settings.high_accuracy;
+-    desired.disable_surface_sync = !(settings.high_accuracy || settings.surface_sync);
++    desired.disable_surface_sync = !settings.surface_sync;
+     desired.memory_mapping = ios_memory_mapping_for(settings);
+     desired.audio_backend = "SDL";
+     // See face_button_slot_for_physical/face_button_physical_for_slot above
+@@ -2349,7 +2349,7 @@
+     current.async_pipeline_compilation = settings.async_pipeline_compilation;
+     current.anisotropic_filtering = settings.anisotropic_filtering;
+     current.high_accuracy = settings.high_accuracy;
+-    current.disable_surface_sync = !(settings.high_accuracy || settings.surface_sync);
++    current.disable_surface_sync = !settings.surface_sync;
+     current.memory_mapping = ios_memory_mapping_for(settings);
+     emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
+     LOG_INFO("Per-game settings override active: res x{} vsync={} fps=60 cpu_opt={} ngs={} async={} aniso={} high_accuracy={} surface_sync={} double_buffer={}",

@@ -37,12 +37,17 @@ enum {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST
 '''
 code += source[start:end]
 app = (repo / 'vita3k/app/src/app_init.cpp').read_text()
-block = re.search(r'#ifdef VITA3K_PLATFORM_IOS\n    // High accuracy.*?#endif', app, re.S).group()
-code += 'void apply_sync(const Config &cc, Config &r) {\n' + block.replace('r.set_surface_sync_state(', 'r.disable_surface_sync = (') + '\n}\n'
+match = re.search(r'r\.set_surface_sync_state\(cc\.disable_surface_sync\);', app)
+assert match, 'expected independent surface-sync apply in app_init.cpp'
+code += (
+    'void apply_sync(const Config &cc, Config &r) {\n'
+    '    r.disable_surface_sync = cc.disable_surface_sync;\n'
+    '}\n'
+)
 assignments = re.findall(r'(?:current|desired)\.disable_surface_sync = [^;]+;', source)
-assert len(assignments) == 3
+assert len(assignments) == 3, assignments
 for i, assignment in enumerate(assignments):
-    code += f'bool save_sync_{i}(const Vita3KIOSSettings &settings) {{ Config current, desired; ' + assignment + ' return ' + assignment.split(' = ')[0] + '; }\n'
+    code += f'bool save_sync_{i}(const Vita3KIOSSettings &settings) {{ Config current, desired; ' + assignment + ' return ' + assignment.split(' = ')[0] + '; }}\n'
 code += r'''
 int main() {
     EmuEnvState env;
@@ -55,22 +60,28 @@ int main() {
     env.cfg.current_config.high_accuracy = false;
     env.cfg.lle_modules = {"saved"};
     env.cfg.current_config.lle_modules = {"game-override"};
-    env.cfg.disable_surface_sync = true; // Old config must not disable accurate readback.
+    // High accuracy must not force surface sync on; honour disable_surface_sync.
+    env.cfg.disable_surface_sync = true;
     auto saved = native_settings(env);
     assert(saved.fps_hack && saved.turbo_mode);
     assert(saved.resolution_multiplier == 1.f);
-    assert(saved.high_accuracy && saved.surface_sync);
+    assert(saved.high_accuracy);
+    assert(!saved.surface_sync); // disable_surface_sync=true → surface_sync off
     assert(saved.lle_modules == std::vector<std::string>{"saved"});
     Config applied;
     apply_sync(env.cfg, applied);
-    assert(!applied.disable_surface_sync);
-    saved.surface_sync = false;
-    assert(!save_sync_0(saved) && !save_sync_1(saved) && !save_sync_2(saved));
-    saved.high_accuracy = false;
-    assert(save_sync_0(saved) && save_sync_1(saved) && save_sync_2(saved));
-    env.cfg.high_accuracy = false;
-    apply_sync(env.cfg, applied);
     assert(applied.disable_surface_sync);
+
+    // Saving surface_sync=false writes disable_surface_sync=true even if high_accuracy stays on.
+    saved.surface_sync = false;
+    assert(save_sync_0(saved) && save_sync_1(saved) && save_sync_2(saved));
+    // Saving surface_sync=true writes disable_surface_sync=false.
+    saved.surface_sync = true;
+    assert(!save_sync_0(saved) && !save_sync_1(saved) && !save_sync_2(saved));
+
+    env.cfg.disable_surface_sync = false;
+    apply_sync(env.cfg, applied);
+    assert(!applied.disable_surface_sync);
 
     // Saving an unrelated volume edit must not erase the pending resolution.
     saved.audio_volume = 75;
