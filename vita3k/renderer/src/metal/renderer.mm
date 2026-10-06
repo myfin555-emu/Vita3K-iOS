@@ -327,7 +327,7 @@ void MetalTextureCache::configure_texture(const SceGxmTexture &texture) {
     textures[index] = [state.device newTextureWithDescriptor:desc];
 }
 
-void MetalTextureCache::upload_texture_impl(SceGxmTextureBaseFormat, uint32_t width,
+void MetalTextureCache::upload_texture_impl(SceGxmTextureBaseFormat base_format, uint32_t width,
     uint32_t height, uint32_t mip_index, const void *pixels, int face, uint32_t pixels_per_stride) {
     if (!current_info || !pixels || !textures[current_info->index]) return;
     auto tex = textures[current_info->index];
@@ -355,9 +355,27 @@ void MetalTextureCache::upload_texture_impl(SceGxmTextureBaseFormat, uint32_t wi
     case MTLPixelFormatRG32Uint: bpp = 8; break;
     default: bpp = 4; break;
     }
-    const size_t row_bytes = stride * bpp;
     const size_t slice = face > 0 ? static_cast<size_t>(face - 1) : 0;
     MTLRegion region = MTLRegionMake2D(0, 0, width, height);
+    if (base_format == SCE_GXM_TEXTURE_BASE_FORMAT_U8U8U8
+        || base_format == SCE_GXM_TEXTURE_BASE_FORMAT_S8S8S8) {
+        const auto *src = static_cast<const uint8_t *>(pixels);
+        std::vector<uint8_t> rgba(static_cast<size_t>(stride) * height * 4);
+        for (uint32_t y = 0; y < height; ++y) {
+            const auto *row = src + static_cast<size_t>(y) * stride * 3;
+            auto *dst = rgba.data() + static_cast<size_t>(y) * stride * 4;
+            for (uint32_t x = 0; x < width; ++x) {
+                dst[x * 4 + 0] = row[x * 3 + 0];
+                dst[x * 4 + 1] = row[x * 3 + 1];
+                dst[x * 4 + 2] = row[x * 3 + 2];
+                dst[x * 4 + 3] = base_format == SCE_GXM_TEXTURE_BASE_FORMAT_U8U8U8 ? 0xff : 0x7f;
+            }
+        }
+        [tex replaceRegion:region mipmapLevel:mip_index slice:slice withBytes:rgba.data()
+              bytesPerRow:static_cast<size_t>(stride) * 4 bytesPerImage:0];
+        return;
+    }
+    const size_t row_bytes = stride * bpp;
     [tex replaceRegion:region mipmapLevel:mip_index slice:slice withBytes:pixels
           bytesPerRow:row_bytes bytesPerImage:0];
 }
