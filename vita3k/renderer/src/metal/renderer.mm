@@ -99,6 +99,16 @@ static MTLBlendOperation blend_op(SceGxmBlendFunc f) {
     }
 }
 
+static MTLTriangleFillMode fill_mode(SceGxmPolygonMode mode) {
+    switch (mode) {
+    case SCE_GXM_POLYGON_MODE_LINE:
+    case SCE_GXM_POLYGON_MODE_TRIANGLE_LINE:
+        return MTLTriangleFillModeLines;
+    default:
+        return MTLTriangleFillModeFill;
+    }
+}
+
 static MTLCullMode cull_mode(SceGxmCullMode mode) {
     switch (mode) {
     case SCE_GXM_CULL_CW: return MTLCullModeFront;
@@ -458,6 +468,7 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     [enc setRenderPipelineState:pipeline];
     [enc setDepthStencilState:depth_state_for_draw()];
     [enc setCullMode:cull_mode(record.cull_mode)];
+    [enc setTriangleFillMode:fill_mode(record.front_polygon_mode)];
     [enc setFrontFacingWinding:MTLWindingCounterClockwise];
     [enc setViewport:(MTLViewport){0, 0, static_cast<double>(render_target->width), static_cast<double>(render_target->height), 0, 1}];
 
