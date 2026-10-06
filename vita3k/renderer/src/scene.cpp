@@ -26,6 +26,7 @@
 #include <renderer/gl/types.h>
 
 #include <renderer/vulkan/functions.h>
+#include <renderer/metal/state.h>
 
 #include <config/state.h>
 #include <util/log.h>
@@ -85,6 +86,11 @@ COMMAND(handle_set_context) {
 
     case Backend::Vulkan:
         vulkan::set_context(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, reinterpret_cast<vulkan::VKRenderTarget *>(rt), features);
+        break;
+
+    case Backend::Metal:
+        reinterpret_cast<metal::MetalContext *>(render_context)->set_context(
+            dynamic_cast<metal::MetalRenderTarget *>(rt));
         break;
 
     default:
@@ -177,6 +183,11 @@ COMMAND(handle_sync_surface_data) {
     case Backend::Vulkan:
         break;
 
+    case Backend::Metal:
+        reinterpret_cast<metal::MetalContext *>(render_context)->sync_surface(vertex_notification, fragment_notification);
+        were_notifications_signaled = true;
+        break;
+
     default:
         REPORT_MISSING(renderer.current_backend);
         break;
@@ -235,6 +246,10 @@ COMMAND(handle_draw) {
     case Backend::Vulkan:
         vulkan::draw(*reinterpret_cast<vulkan::VKContext *>(render_context), type, format, indices.cast<void>(),
             count, instance_count, mem, config);
+        break;
+
+    case Backend::Metal:
+        reinterpret_cast<metal::MetalContext *>(render_context)->draw(type, format, indices, count, instance_count);
         break;
 
     default:
