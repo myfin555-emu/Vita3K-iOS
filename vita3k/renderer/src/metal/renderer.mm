@@ -301,7 +301,7 @@ void MetalTextureCache::configure_texture(const SceGxmTexture &texture) {
     case SCE_GXM_TEXTURE_BASE_FORMAT_U32U32: desc.pixelFormat = MTLPixelFormatRG32Uint; break;
     case SCE_GXM_TEXTURE_BASE_FORMAT_U8U8U8:
     case SCE_GXM_TEXTURE_BASE_FORMAT_S8S8S8:
-    case SCE_GXM_TEXTURE_BASE_FORMAT_U8U3U2:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U8U3U3U2:
     case SCE_GXM_TEXTURE_BASE_FORMAT_P4:
     case SCE_GXM_TEXTURE_BASE_FORMAT_P8:
     case SCE_GXM_TEXTURE_BASE_FORMAT_PVRT2BPP:
@@ -939,10 +939,6 @@ void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNo
         for (size_t y = 0; y < height; ++y)
             memcpy(dst + y * stride * 4, pixels.data() + y * width * 4, width * 4);
     }
-    std::lock_guard<std::mutex> lock(state.notification_mutex);
-    if (vertex.address) *vertex.address.get(mem) = vertex.value;
-    if (fragment.address) *fragment.address.get(mem) = fragment.value;
-    state.notification_ready.notify_all();
 }
 
 } // namespace renderer::metal
