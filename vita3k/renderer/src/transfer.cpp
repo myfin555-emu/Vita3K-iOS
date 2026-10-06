@@ -16,6 +16,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 #include <gxm/functions.h>
+#include <functional>
 #include <gxm/types.h>
 #include <renderer/commands.h>
 #include <renderer/driver_functions.h>
@@ -25,7 +26,9 @@
 #include <util/log.h>
 #include <util/tracy.h>
 
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/state.h>
+#endif
 
 // keywords.h must be after tracy.h for msvc compiler
 #include <util/keywords.h>
@@ -152,7 +155,7 @@ COMMAND(handle_transfer_copy) {
         LOG_ERROR_ONCE("Transfer copy with non-zero key mask not handled for format 0x{:0X}", fmt::underlying(src_fmt));
     }
 
-    vulkan::CallbackRequestFunction copy_operation = [=, &mem]() {
+    std::function<void()> copy_operation = [=, &mem]() {
         const SceGxmTransferImage &src = images[0];
         const SceGxmTransferImage &dst = images[1];
 
@@ -184,11 +187,13 @@ COMMAND(handle_transfer_copy) {
         delete[] images;
     };
 
+#ifndef VITA3K_IOS_GER_ONLY
     if (renderer.current_backend == Backend::Vulkan && renderer.features.enable_memory_mapping && !renderer.disable_surface_sync) {
         if (dynamic_cast<vulkan::VKState &>(renderer).surface_cache.check_for_surface(mem, images[0].address.address(), copy_operation, images[1].address.address()))
             // let the vulkan surface cache handle it
             return;
     }
+#endif
 
     copy_operation();
 }
@@ -276,11 +281,13 @@ COMMAND(handle_transfer_downscale) {
         delete dst;
     };
 
+#ifndef VITA3K_IOS_GER_ONLY
     if (renderer.current_backend == Backend::Vulkan && renderer.features.enable_memory_mapping && !renderer.disable_surface_sync) {
         if (dynamic_cast<vulkan::VKState &>(renderer).surface_cache.check_for_surface(mem, src->address.address(), downscale_operation, dst->address.address()))
             // let the vulkan surface cache handle it
             return;
     }
+#endif
 
     downscale_operation();
 }
