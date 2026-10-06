@@ -72,7 +72,8 @@ COMMAND_SET_STATE(region_clip) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -264,7 +265,8 @@ COMMAND_SET_STATE(depth_bias) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -292,7 +294,8 @@ COMMAND_SET_STATE(depth_func) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -319,7 +322,8 @@ COMMAND_SET_STATE(depth_write_enable) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -345,7 +349,8 @@ COMMAND_SET_STATE(polygon_mode) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -369,7 +374,8 @@ COMMAND_SET_STATE(point_line_width) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -412,7 +418,8 @@ COMMAND_SET_STATE(stencil_func) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -439,7 +446,8 @@ COMMAND_SET_STATE(stencil_ref) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -490,7 +498,8 @@ COMMAND_SET_STATE(two_sided) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -511,7 +520,8 @@ COMMAND_SET_STATE(cull_mode) {
 
     case Backend::Metal:
         break;
-        default:
+
+    default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
