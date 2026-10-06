@@ -503,8 +503,7 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
 #ifdef VITA3K_PLATFORM_IOS
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_SHADER_COMPRESSION_ALGORITHM", vk::LayerSettingTypeEXT::eInt32, 1,
                 &shader_compression },
-#ifndef NDEBUG
-#else
+#ifdef NDEBUG
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_LOG_LEVEL", vk::LayerSettingTypeEXT::eInt32, 1,
                 &release_log_level },
 #endif
