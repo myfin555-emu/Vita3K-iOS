@@ -1,9 +1,7 @@
 #pragma once
 
-// Vita-side display and memory types must be declared before Apple's
-// Objective-C headers are imported. This avoids Xcode SDK global declarations
-// affecting C++ type lookup in mixed Objective-C++ translation units.
-#include <display/state.h>
+// Keep display frame types opaque in this Objective-C++-visible header. The
+// implementation includes <display/state.h> where the frame fields are used.
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
 
@@ -23,6 +21,7 @@
 #include <vector>
 
 struct Config;
+struct DisplayFrameInfo;
 struct DisplayState;
 struct GxmState;
 struct MemState;
