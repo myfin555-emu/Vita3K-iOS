@@ -114,7 +114,7 @@ static MTLPrimitiveType primitive_type(SceGxmPrimitiveType type) {
     case SCE_GXM_PRIMITIVE_LINES: return MTLPrimitiveTypeLine;
     case SCE_GXM_PRIMITIVE_POINTS: return MTLPrimitiveTypePoint;
     case SCE_GXM_PRIMITIVE_TRIANGLE_STRIP: return MTLPrimitiveTypeTriangleStrip;
-    case SCE_GXM_PRIMITIVE_TRIANGLE_FAN: return MTLPrimitiveTypeTriangleFan;
+    case SCE_GXM_PRIMITIVE_TRIANGLE_FAN: return MTLPrimitiveTypeTriangle;
     case SCE_GXM_PRIMITIVE_TRIANGLES:
     default: return MTLPrimitiveTypeTriangle;
     }
@@ -526,15 +526,43 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     if (vertex_uniforms[0]) [enc setVertexBuffer:vertex_uniforms[0] offset:0 atIndex:0];
     if (fragment_uniforms[0]) [enc setFragmentBuffer:fragment_uniforms[0] offset:0 atIndex:1];
 
-    if (index_type != SCE_GXM_INDEX_FORMAT_U16 && index_type != SCE_GXM_INDEX_FORMAT_U32)
-        return;
     const size_t index_size = index_type == SCE_GXM_INDEX_FORMAT_U16 ? sizeof(uint16_t) : sizeof(uint32_t);
-    index_buffer = make_shared_buffer(state.device, indices.cast<const void>().get(mem), count * index_size);
-    if (!index_buffer) return;
-    const MTLIndexType metal_index_type = index_type == SCE_GXM_INDEX_FORMAT_U16 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32;
-
-    [enc drawIndexedPrimitives:primitive_type(type) indexCount:count indexType:metal_index_type
-        indexBuffer:index_buffer indexBufferOffset:0 instanceCount:std::max<uint32_t>(1, instance_count)];
+    if (type == SCE_GXM_PRIMITIVE_TRIANGLE_FAN) {
+        const size_t tri_count = count >= 3 ? count - 2 : 0;
+        if (!tri_count) return;
+        if (index_type == SCE_GXM_INDEX_FORMAT_U16) {
+            const auto *src = static_cast<const uint16_t *>(indices.get(mem));
+            std::vector<uint16_t> fan(tri_count * 3);
+            for (size_t i = 0; i < tri_count; ++i) {
+                fan[i * 3 + 0] = src[0];
+                fan[i * 3 + 1] = src[i + 1];
+                fan[i * 3 + 2] = src[i + 2];
+            }
+            index_buffer = make_shared_buffer(state.device, fan.data(), fan.size() * sizeof(uint16_t));
+        } else if (index_type == SCE_GXM_INDEX_FORMAT_U32) {
+            const auto *src = static_cast<const uint32_t *>(indices.get(mem));
+            std::vector<uint32_t> fan(tri_count * 3);
+            for (size_t i = 0; i < tri_count; ++i) {
+                fan[i * 3 + 0] = src[0];
+                fan[i * 3 + 1] = src[i + 1];
+                fan[i * 3 + 2] = src[i + 2];
+            }
+            index_buffer = make_shared_buffer(state.device, fan.data(), fan.size() * sizeof(uint32_t));
+        } else {
+            return;
+        }
+        if (!index_buffer) return;
+        const MTLIndexType metal_index_type = index_type == SCE_GXM_INDEX_FORMAT_U16 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32;
+        [enc drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexCount:static_cast<NSUInteger>(tri_count * 3)
+            indexType:metal_index_type indexBuffer:index_buffer indexBufferOffset:0
+            instanceCount:std::max<uint32_t>(1, instance_count)];
+    } else {
+        index_buffer = make_shared_buffer(state.device, indices.get(mem), count * index_size);
+        if (!index_buffer) return;
+        const MTLIndexType metal_index_type = index_type == SCE_GXM_INDEX_FORMAT_U16 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32;
+        [enc drawIndexedPrimitives:primitive_type(type) indexCount:count indexType:metal_index_type
+            indexBuffer:index_buffer indexBufferOffset:0 instanceCount:std::max<uint32_t>(1, instance_count)];
+    }
 
     [enc endEncoding];
     [cmd commit];
