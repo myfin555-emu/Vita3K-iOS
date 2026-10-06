@@ -48,12 +48,17 @@ struct AndroidDisplayHandle {
     SDL_Window *window = nullptr;
 };
 
+struct SDLDisplayHandle {
+    SDL_Window *window = nullptr;
+};
+
 using DisplayHandle = std::variant<std::monostate,
     Win32DisplayHandle,
     MacOSDisplayHandle,
     X11DisplayHandle,
     WaylandDisplayHandle,
-    AndroidDisplayHandle>;
+    AndroidDisplayHandle,
+    SDLDisplayHandle>;
 
 class FrameHost {
 public:
