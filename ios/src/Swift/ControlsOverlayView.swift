@@ -20,14 +20,39 @@ struct ControlsOverlayView: View {
     /// the editor's buttons are structural choices, not backgrounds.
     @AppStorage(DefaultsKey.liquidGlassInGame.rawValue) private var liquidGlass = true
 
+    /// Bumped after appear so glass/material controls re-sample the Metal view
+    /// once a real game frame is likely on screen (fixes solid-looking first launch).
+    @State private var liquidGlassEpoch = 0
+
     var body: some View {
         // The safe-area inset the core uses to letterbox the game is reported
         // from the hosting controller (ControlsHostingController), which reads
         // UIKit's authoritative view.safeAreaInsets - a SwiftUI GeometryReader
         // here would report zero once the controls go full-bleed.
         controlsLayer
-            .onAppear { ControllerHaptics.prepare(model.hapticStrength) }
+            .environment(\.liquidGlassEpoch, liquidGlassEpoch)
+            .onAppear {
+                ControllerHaptics.prepare(model.hapticStrength)
+                // Glass samples the drawable behind the overlay. On the first
+                // attach that drawable is often still empty, so the controls
+                // look opaque until the user toggles Liquid Glass. Rebuild
+                // automatically after short delays instead.
+                scheduleGlassResample()
+            }
             .onDisappear { ControllerHaptics.end() }
+            .compatibleOnChange(of: liquidGlass) { _, _ in
+                // User toggle: force an immediate rebuild of every surface.
+                liquidGlassEpoch += 1
+            }
+    }
+
+    private func scheduleGlassResample() {
+        // Two passes: early (most devices) and late (slow first frame / shader compile).
+        for delay in [0.15, 0.55, 1.2] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                liquidGlassEpoch += 1
+            }
+        }
     }
 
     private var controlsLayer: some View {
@@ -88,8 +113,10 @@ struct ControlsOverlayView: View {
             GlassEffectContainer(spacing: 18) {
                 controlStack(in: size)
             }
+            .id("glassField-\(liquidGlassEpoch)")
         } else {
             controlStack(in: size)
+                .id("flatField-\(liquidGlassEpoch)")
         }
     }
 
