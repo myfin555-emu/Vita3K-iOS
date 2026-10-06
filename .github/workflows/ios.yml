@@ -9,7 +9,9 @@ on:
       - "CMakeLists.txt"
       - "ios/**"
       - "vita3k/packages/**"
-      - "external/miniz/**"
+      - "vita3k/renderer/**"
+      - "vita3k/shader/**"
+      - "external/**"
       - ".ci/package-ios.sh"
       - ".github/workflows/ios.yml"
   pull_request:
@@ -17,7 +19,9 @@ on:
       - "CMakeLists.txt"
       - "ios/**"
       - "vita3k/packages/**"
-      - "external/miniz/**"
+      - "vita3k/renderer/**"
+      - "vita3k/shader/**"
+      - "external/**"
       - ".ci/package-ios.sh"
       - ".github/workflows/ios.yml"
 
