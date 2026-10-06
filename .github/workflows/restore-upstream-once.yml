@@ -1,0 +1,34 @@
+name: restore-upstream-once
+on:
+  push:
+    paths:
+      - "ios/patches/_upstream_restore/**"
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble UpstreamMain.cpp
+        run: |
+          python3 ios/patches/_upstream_restore/assemble.py
+          test -s ios/src/UpstreamMain.cpp
+          wc -c ios/src/UpstreamMain.cpp
+          grep -q "disable_surface_sync = !settings.surface_sync" ios/src/UpstreamMain.cpp
+          grep -q "surface_sync = !current.disable_surface_sync" ios/src/UpstreamMain.cpp
+      - name: Commit restored file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ios/src/UpstreamMain.cpp
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "fix(ios): restore UpstreamMain.cpp (decouple Surface sync from High accuracy)"
+          git push
