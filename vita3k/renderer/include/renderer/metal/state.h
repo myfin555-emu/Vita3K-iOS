@@ -21,6 +21,7 @@
 
 struct Config;
 struct DisplayState;
+struct DisplayFrameInfo;
 struct GxmState;
 struct MemState;
 
