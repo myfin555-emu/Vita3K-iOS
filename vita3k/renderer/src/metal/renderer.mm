@@ -773,8 +773,8 @@ bool MetalState::init() {
 
     if (frame) {
         auto handle = frame->handle();
-        if (auto *android = std::get_if<AndroidDisplayHandle>(&handle); android && android->window) {
-            metal_view = SDL_Metal_CreateView(android->window);
+        if (auto *sdl = std::get_if<SDLDisplayHandle>(&handle); sdl && sdl->window) {
+            metal_view = SDL_Metal_CreateView(sdl->window);
             layer = SDL_Metal_GetLayer(metal_view);
         }
     }
