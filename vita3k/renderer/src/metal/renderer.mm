@@ -721,10 +721,7 @@ bool MetalState::init() {
 }
 
 void MetalState::cleanup() {
-    if (active_context) {
-        delete active_context;
-        active_context = nullptr;
-    }
+    active_context = nullptr;
     if (metal_view) {
         SDL_Metal_DestroyView(metal_view);
         metal_view = nil;
