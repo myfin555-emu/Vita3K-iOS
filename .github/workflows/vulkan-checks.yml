@@ -1,31 +1,7 @@
 name: Vulkan renderer checks
 
 on:
-  workflow_call:
   workflow_dispatch:
-  push:
-    paths:
-      - "vita3k/renderer/**"
-      - "vita3k/vkutil/**"
-      - "vita3k/util/**"
-      - "external/**"
-      - "ios/tests/vulkan/**"
-      - "ios/cmake/*MoltenVK*.cmake"
-      - ".ci/install-moltenvk.cmake"
-      - ".github/workflows/vulkan-checks.yml"
-  pull_request:
-    paths:
-      - "vita3k/renderer/**"
-      - "vita3k/vkutil/**"
-      - "vita3k/util/**"
-      - "external/**"
-      - "ios/tests/vulkan/**"
-      - "ios/cmake/*MoltenVK*.cmake"
-      - ".ci/install-moltenvk.cmake"
-      - ".github/workflows/vulkan-checks.yml"
-
-permissions:
-  contents: read
 
 jobs:
   vulkan-support-tests:
