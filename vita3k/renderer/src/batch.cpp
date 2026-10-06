@@ -22,7 +22,9 @@
 #include <renderer/types.h>
 #include <util/ios_performance.h>
 
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/types.h>
+#endif
 
 #include <config/state.h>
 #include <display/state.h>
