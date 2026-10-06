@@ -25,10 +25,16 @@
 #include <renderer/gl/state.h>
 #include <renderer/gl/types.h>
 
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/functions.h>
+#endif
 #include <renderer/metal/state.h>
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/state.h>
+#endif
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/types.h>
+#endif
 
 #include <util/align.h>
 #include <util/log.h>
@@ -67,7 +73,9 @@ COMMAND_SET_STATE(region_clip) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_clipping(*static_cast<vulkan::VKContext *>(render_context));
+#endif
         break;
 
     case Backend::Metal:
@@ -112,7 +120,9 @@ COMMAND_SET_STATE(program) {
     }
 
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
     }
 }
 
@@ -132,7 +142,9 @@ COMMAND_SET_STATE(uniform_buffer) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::set_uniform_buffer(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, program, is_vertex, block_num, size, data);
+#endif
         break;
 
     case Backend::Metal:
@@ -193,7 +205,9 @@ COMMAND_SET_STATE(viewport) {
             break;
 
         case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
             vulkan::sync_viewport_real(*reinterpret_cast<vulkan::VKContext *>(render_context), xOffset, yOffset, zOffset, xScale, yScale, zScale);
+#endif
             break;
 
         default:
@@ -214,7 +228,9 @@ COMMAND_SET_STATE(viewport) {
             break;
 
         case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
             vulkan::sync_viewport_flat(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
             break;
 
         default:
@@ -233,7 +249,9 @@ COMMAND_SET_STATE(viewport) {
 
         case Backend::Vulkan:
             // We need to sync again state that uses the flip
+#ifndef VITA3K_IOS_GER_ONLY
             vulkan::sync_clipping(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
             break;
 
         default:
@@ -260,7 +278,9 @@ COMMAND_SET_STATE(depth_bias) {
 
     case Backend::Vulkan:
         if (is_front)
+#ifndef VITA3K_IOS_GER_ONLY
             vulkan::sync_depth_bias(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
         break;
 
     case Backend::Metal:
@@ -289,7 +309,9 @@ COMMAND_SET_STATE(depth_func) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
         break;
 
     case Backend::Metal:
@@ -317,7 +339,9 @@ COMMAND_SET_STATE(depth_write_enable) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
         break;
 
     case Backend::Metal:
@@ -344,7 +368,9 @@ COMMAND_SET_STATE(polygon_mode) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
         break;
 
     case Backend::Metal:
@@ -369,7 +395,9 @@ COMMAND_SET_STATE(point_line_width) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_point_line_width(*reinterpret_cast<vulkan::VKContext *>(render_context), is_front);
+#endif
         break;
 
     case Backend::Metal:
@@ -412,8 +440,12 @@ COMMAND_SET_STATE(stencil_func) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(dynamic_cast<vulkan::VKContext &>(*render_context));
+#endif
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), !is_front);
+#endif
         break;
 
     case Backend::Metal:
@@ -441,7 +473,9 @@ COMMAND_SET_STATE(stencil_ref) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), !is_front);
+#endif
         break;
 
     case Backend::Metal:
@@ -465,8 +499,10 @@ COMMAND_SET_STATE(texture) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_texture(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, texture_index, texture,
             config);
+#endif
         break;
 
     case Backend::Metal:
@@ -490,10 +526,16 @@ COMMAND_SET_STATE(two_sided) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), false);
+#endif
         // this second call is useless if two_sided is disabled
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), true);
+#endif
         break;
 
     case Backend::Metal:
@@ -515,7 +557,9 @@ COMMAND_SET_STATE(cull_mode) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
         break;
 
     case Backend::Metal:
@@ -549,7 +593,9 @@ COMMAND_SET_STATE(fragment_program_enable) {
         render_context->record.back_side_fragment_program_mode = mode;
 
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
+#endif
     }
 }
 
@@ -559,7 +605,9 @@ COMMAND_SET_STATE(visibility_buffer) {
     const uint32_t stride = helper.pop<uint32_t>();
 
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_visibility_buffer(*reinterpret_cast<vulkan::VKContext *>(render_context), buffer, stride);
+#endif
     }
 }
 
@@ -570,7 +618,9 @@ COMMAND_SET_STATE(visibility_index) {
     const bool is_increment = helper.pop<bool>();
 
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::sync_visibility_index(*reinterpret_cast<vulkan::VKContext *>(render_context), enable, index, is_increment);
+#endif
     }
 }
 
