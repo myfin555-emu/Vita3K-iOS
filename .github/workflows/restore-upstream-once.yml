@@ -1,8 +1,5 @@
 name: restore-upstream-once
 on:
-  push:
-    paths:
-      - "ios/patches/_upstream_restore/**"
   workflow_dispatch:
 
 jobs:
