@@ -101,11 +101,9 @@ static MTLBlendOperation blend_op(SceGxmBlendFunc f) {
 
 static MTLCullMode cull_mode(SceGxmCullMode mode) {
     switch (mode) {
-    case SCE_GXM_CULL_CW:
-    case SCE_GXM_CULL_CCW:
-        return MTLCullModeBack;
-    default:
-        return MTLCullModeNone;
+    case SCE_GXM_CULL_CW: return MTLCullModeFront;
+    case SCE_GXM_CULL_CCW: return MTLCullModeBack;
+    default: return MTLCullModeNone;
     }
 }
 
@@ -460,7 +458,7 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     [enc setRenderPipelineState:pipeline];
     [enc setDepthStencilState:depth_state_for_draw()];
     [enc setCullMode:cull_mode(record.cull_mode)];
-    [enc setFrontFacingWinding:record.viewport_flip[1] < 0 ? MTLWindingCounterClockwise : MTLWindingClockwise];
+    [enc setFrontFacingWinding:MTLWindingCounterClockwise];
     [enc setViewport:(MTLViewport){0, 0, static_cast<double>(render_target->width), static_cast<double>(render_target->height), 0, 1}];
 
     for (size_t i = 0; i < record.vertex_streams.size(); ++i) {
