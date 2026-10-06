@@ -486,9 +486,14 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
 #endif
         const VkBool32 resume_lost_device = VK_TRUE;
 #ifdef VITA3K_PLATFORM_IOS
-        // MSL source is retained for cache export after compilation; compress
-        // that inactive source instead of keeping every expanded shader in RAM.
+        // Keep inactive MSL compact in RAM; the pipeline cache still retains
+        // enough data for export/reload.
         const int32_t shader_compression = 1; // MoltenVK LZFSE
+        // MoltenVK's warning/info logging is surprisingly expensive on a
+        // mobile CPU when a game emits many validation/performance messages.
+        // Release builds only: retain errors, but remove the per-frame log
+        // traffic from the rendering path.
+        const int32_t release_log_level = 1;
 #endif
 #ifndef NDEBUG
         const VkBool32 debug = VK_TRUE;
@@ -498,6 +503,11 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
 #ifdef VITA3K_PLATFORM_IOS
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_SHADER_COMPRESSION_ALGORITHM", vk::LayerSettingTypeEXT::eInt32, 1,
                 &shader_compression },
+#ifndef NDEBUG
+#else
+            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_LOG_LEVEL", vk::LayerSettingTypeEXT::eInt32, 1,
+                &release_log_level },
+#endif
 #endif
 #if !defined(VITA3K_PLATFORM_IOS)
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", vk::LayerSettingTypeEXT::eBool32, 1,
