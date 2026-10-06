@@ -1,6 +1,13 @@
 #pragma once
 
-// Apple\'s legacy MacTypes.h exposes a global `Ptr` typedef. Vita3K has a
+// Vita-side display and memory types must be declared before Apple's
+// Objective-C headers are imported. This avoids Xcode SDK global declarations
+// affecting C++ type lookup in mixed Objective-C++ translation units.
+#include <display/state.h>
+#include <renderer/texture_cache.h>
+#include <renderer/types.h>
+
+// Apple's legacy MacTypes.h exposes a global `Ptr` typedef. Vita3K has a
 // global Ptr<T> guest-memory template, so rename the legacy Apple alias while
 // importing Metal/SDL headers. The alias is private to the Apple headers.
 #define Ptr MacTypesPtr
@@ -8,10 +15,6 @@
 #import <SDL3/SDL_metal.h>
 #undef Ptr
 @class CAMetalLayer;
-
-#include <display/state.h>
-#include <renderer/texture_cache.h>
-#include <renderer/types.h>
 
 #include <array>
 #include <map>
@@ -21,7 +24,6 @@
 
 struct Config;
 struct DisplayState;
-struct DisplayFrameInfo;
 struct GxmState;
 struct MemState;
 
