@@ -68,7 +68,13 @@ if(APPLE AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
 	target_sources(renderer PRIVATE src/vulkan/metal_layer.mm)
 	target_link_libraries(renderer PRIVATE "-framework QuartzCore" "-framework Cocoa")
 elseif(VITA3K_BUILD_IOS_UPSTREAM_CORE)
-	target_link_libraries(renderer PRIVATE vulkan "-framework QuartzCore")
+	if(VITA3K_IOS_GER_ONLY)
+		# GE:R uses the native Metal backend and must not pull the Vulkan/MoltenVK
+		# runtime into the iOS appliance.
+		target_link_libraries(renderer PRIVATE "-framework QuartzCore")
+	else()
+		target_link_libraries(renderer PRIVATE vulkan "-framework QuartzCore")
+	endif()
 endif()
 
 if(X11_FOUND)
