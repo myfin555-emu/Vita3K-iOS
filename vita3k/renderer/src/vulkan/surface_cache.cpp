@@ -1592,7 +1592,7 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
                     sampled ? static_cast<int>(nonzero * 100 / sampled) : 0);
             }
         }
-#endif#endif
+#endif
 #endif
 
         const bool is_swizzle_identity = surface->swizzle.r == vk::ComponentSwizzle::eR
