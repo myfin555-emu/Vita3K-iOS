@@ -6,6 +6,9 @@ set(VITA3K_IOS_BUNDLE_ID "org.vita3k.experimental.ios" CACHE STRING "Application
 option(VITA3K_IOS_LINK_CORE "Link the first upstream Vita3K core slice" ON)
 option(VITA3K_IOS_GER_ONLY "Build the iOS frontend as a God Eater Resurrection-only appliance" OFF)
 option(VITA3K_IOS_GER_METAL_FOUNDATION "Compile the isolated GE:R native Metal renderer foundation" OFF)
+if(VITA3K_IOS_GER_ONLY)
+    set(VITA3K_IOS_GER_METAL_FOUNDATION ON CACHE BOOL "Enable GE:R native Metal renderer" FORCE)
+endif()
 
 if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
     message(FATAL_ERROR "VITA3K_IOS_GER_METAL_FOUNDATION requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON.")
