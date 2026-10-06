@@ -72,6 +72,9 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         model.save()
+                        // Per-game settings persist immediately in the native
+                        // frontend. Global settings play after the core reports
+                        // that its commit completed.
                         if model.isPerGame {
                             HomeSoundEffects.play(.sparkle)
                         }
@@ -412,31 +415,66 @@ struct SettingsView: View {
             Button("Use global settings", role: .destructive) {
                 showingResetConfirmation = true
             }
-        } footer: {
-            Text("Removes the per-game override so this title uses the app-wide settings again.")
-        }
-        .confirmationDialog("Use global settings for this game?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
-            Button("Use global settings", role: .destructive) {
-                model.resetToGlobal()
-                onFinish()
+            .confirmationDialog(
+                "Remove this game's custom settings?",
+                isPresented: $showingResetConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Use global settings", role: .destructive) {
+                    model.resetPerGameOverrides()
+                    onFinish()
+                }
+            } message: {
+                Text("This game will follow the global settings the next time it launches.")
             }
-            Button("Cancel", role: .cancel) {}
+        } footer: {
+            Text("These settings apply only to this game and take effect the next time it launches.")
         }
     }
 }
 
-/// Face-button position remapping for controllers that report Xbox-style layouts.
-struct FaceButtonLayoutView: View {
+enum OrientationLockOption: String, CaseIterable, Identifiable {
+    case portrait
+    case landscape
+    case landscapeFlipped
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .portrait: "Portrait"
+        case .landscape: "Landscape"
+        case .landscapeFlipped: "Landscape (Flipped)"
+        }
+    }
+}
+
+@MainActor
+private struct FaceButtonLayoutView: View {
     @ObservedObject var model: SettingsModel
+
+    private static let positions = ["Bottom", "Right", "Left", "Top"]
 
     var body: some View {
         Form {
-            Picker("Layout", selection: $model.faceButtonLayout) {
-                Text("PlayStation").tag(0)
-                Text("Xbox / Nintendo").tag(1)
+            Section {
+                picker("Cross", selection: $model.bindCross)
+                picker("Circle", selection: $model.bindCircle)
+                picker("Square", selection: $model.bindSquare)
+                picker("Triangle", selection: $model.bindTriangle)
+            } footer: {
+                Text("Choose which physical button position triggers each Vita button.")
             }
-            .pickerStyle(.inline)
         }
-        .navigationTitle("Face button layout")
+        .navigationTitle("Face Buttons")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func picker(_ label: String, selection: Binding<Int>) -> some View {
+        Picker(label, selection: selection) {
+            ForEach(Array(Self.positions.enumerated()), id: \.offset) { index, name in
+                Text(name).tag(index)
+            }
+        }
     }
 }
