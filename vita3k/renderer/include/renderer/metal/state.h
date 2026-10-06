@@ -1,7 +1,12 @@
 #pragma once
 
+// Apple\'s legacy MacTypes.h exposes a global `Ptr` typedef. Vita3K has a
+// global Ptr<T> guest-memory template, so rename the legacy Apple alias while
+// importing Metal/SDL headers. The alias is private to the Apple headers.
+#define Ptr MacTypesPtr
 #import <Metal/Metal.h>
 #import <SDL3/SDL_metal.h>
+#undef Ptr
 @class CAMetalLayer;
 
 #include <renderer/texture_cache.h>
