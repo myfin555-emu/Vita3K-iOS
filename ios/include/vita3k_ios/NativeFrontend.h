@@ -52,12 +52,8 @@ struct Vita3KIOSTrophyCollection {
 };
 
 struct Vita3KIOSSettings {
-    // A11 performance profile: 0.75x keeps the 960x544 native target light
-    // enough for the PowerVR GPU while remaining noticeably sharper than 0.5x.
-    float resolution_multiplier = 0.75f;
-    // Avoid FIFO blocking on the render thread. Presentation is still bounded
-    // by the iOS compositor, but the emulator can submit without a v-sync wait.
-    bool v_sync = false;
+    float resolution_multiplier = 1.0f;
+    bool v_sync = true;
     bool shader_cache = true;
     int fps_limit = 60;
     bool fps_hack = false;
