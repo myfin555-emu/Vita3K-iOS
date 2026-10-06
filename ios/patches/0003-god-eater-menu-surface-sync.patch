@@ -1,0 +1,25 @@
+--- a/vita3k/renderer/src/vulkan/surface_cache.cpp
++++ b/vita3k/renderer/src/vulkan/surface_cache.cpp
+@@ -1497,8 +1497,20 @@
+ }
+ 
+ void VKSurfaceCache::queue_post_surface_sync(ColorSurfaceCacheInfo *surface) {
+-    if (surface->pending_readback)
+-        surface->pending_readback->wait([&] { return state.request_queue.is_aborted(); });
++    // Drop intermediate readbacks while one is still in flight.
++    //
++    // God Eater Resurrection (and similar UI-heavy titles) rewrite linear color
++    // surfaces every frame while menus are open. The previous implementation
++    // blocked here until the prior PostSurfaceSyncRequest finished, which
++    // serialized the wait-queue and collapsed FPS until the menu closed.
++    // Skipping in-flight intermediates keeps combat/lobby pacing intact; the
++    // next free slot still syncs the latest contents. Rage Burst 2 does not
++    // hit this path as hard because its menus use fewer linear surface updates.
++    if (surface->pending_readback) {
++        if (!surface->pending_readback->ready())
++            return;
++        surface->pending_readback.reset();
++    }
+     auto completion = std::make_shared<SurfaceReadback>();
+     surface->pending_readback = completion;
+     state.request_queue.push(PostSurfaceSyncRequest{ surface, std::move(completion) });
