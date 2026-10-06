@@ -1,6 +1,8 @@
 #pragma once
 
 #import <Metal/Metal.h>
+#import <SDL3/SDL_metal.h>
+@class CAMetalLayer;
 
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
@@ -61,6 +63,7 @@ struct MetalTextureCache final : renderer::TextureCache {
 
     id<MTLTexture> texture_at(size_t index) const { return textures[index]; }
     id<MTLSamplerState> sampler_at(size_t index) const { return samplers[index]; }
+    size_t bound_index() const { return current_info ? static_cast<size_t>(current_info->index) : 0; }
 };
 
 struct MetalContext final : renderer::Context {
@@ -75,6 +78,8 @@ struct MetalContext final : renderer::Context {
     std::array<id<MTLSamplerState>, SCE_GXM_MAX_TEXTURE_UNITS> vertex_samplers{};
     std::array<id<MTLTexture>, SCE_GXM_MAX_TEXTURE_UNITS> fragment_textures{};
     std::array<id<MTLSamplerState>, SCE_GXM_MAX_TEXTURE_UNITS> fragment_samplers{};
+    std::vector<uint8_t> vertex_ubo_blob;
+    std::vector<uint8_t> fragment_ubo_blob;
 
     id<MTLBuffer> index_buffer = nil;
     NSUInteger index_offset = 0;
@@ -159,6 +164,7 @@ void sync_texture(MetalContext &context, MemState &mem, size_t index,
     SceGxmTexture texture, const Config &config);
 void sync_viewport_real(MetalContext &context, float xOffset, float yOffset,
     float zOffset, float xScale, float yScale, float zScale);
+
 void sync_viewport_flat(MetalContext &context);
 
 } // namespace renderer::metal
