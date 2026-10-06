@@ -172,7 +172,11 @@ static void set_backend_renderer(EmuEnvState &emuenv, const std::string &backend
         ? renderer::Backend::OpenGL
         : renderer::Backend::Vulkan;
 #else
+#ifdef VITA3K_IOS_GER_ONLY
+    emuenv.backend_renderer = renderer::Backend::Metal;
+#else
     emuenv.backend_renderer = renderer::Backend::Vulkan;
+#endif
 #endif
 }
 
