@@ -769,7 +769,8 @@ void MetalState::late_init(const Config &, const std::string_view game_id, MemSt
     features.enable_memory_mapping = false;
     features.use_texture_viewport = true;
     features.support_rgb_attributes = true;
-    features.support_scaled_attributes = true;
+    features.support_scaled_attribute_formats = true;
+    features.support_unmapped_surface_sync = true;
 }
 
 void MetalState::render_frame(DisplayState &display, const GxmState &, MemState &mem) {
@@ -862,7 +863,7 @@ std::vector<uint32_t> MetalState::dump_frame(DisplayState &display, uint32_t &wi
 uint32_t MetalState::get_features_mask() {
     return (features.use_texture_viewport ? 1u : 0u)
         | (features.support_rgb_attributes ? 2u : 0u)
-        | (features.support_scaled_attributes ? 4u : 0u);
+        | (features.support_scaled_attribute_formats ? 4u : 0u);
 }
 
 int MetalState::get_supported_filters() {
