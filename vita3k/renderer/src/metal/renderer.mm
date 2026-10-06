@@ -187,7 +187,7 @@ static void remap_msl_bindings(spirv_cross::CompilerMSL &compiler) {
             const uint32_t set = compiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
             const uint32_t binding = compiler.get_decoration(resource.id, spv::DecorationBinding);
             uint32_t mapped = binding;
-            if (set == 2 || set == 3) mapped = (binding & 15u) + (set == 3 ? 16u : 0u);
+            if (set == 2 || set == 3) mapped = binding & 15u;
             else if (set == 1) mapped = 30u + (binding & 1u);
             compiler.set_decoration(resource.id, spv::DecorationBinding, mapped);
         }
