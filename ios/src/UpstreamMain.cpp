@@ -554,8 +554,11 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
         cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 16, 128);
         set_ios_jit_cache_size(static_cast<std::size_t>(cfg.ios_jit_cache_mb) * 1024 * 1024);
 
-        // MoltenVK-backed Vulkan is the only renderer on iOS.
+    #ifdef VITA3K_IOS_GER_ONLY
+        cfg.backend_renderer = "Metal";
+#else
         cfg.backend_renderer = "Vulkan";
+#endif
 
         // Graphics > Double buffer defaults off on iOS (see the setting's
         // comment in NativeFrontend.h). Upstream's default for this field is
@@ -2836,7 +2839,11 @@ int main(int argc, char *argv[]) {
     // contentsScale 1 and the whole game renders at point resolution (the
     // 402x874 "extremely pixelated" drawable seen in device logs).
     SDL_SetNumberProperty(window_props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER,
+#ifdef VITA3K_IOS_GER_ONLY
+        SDL_WINDOW_METAL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+#else
         SDL_WINDOW_VULKAN | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+#endif
 
     SDL_Window *window = SDL_CreateWindowWithProperties(window_props);
     SDL_DestroyProperties(window_props);
@@ -2909,7 +2916,11 @@ int main(int argc, char *argv[]) {
     // of tearing the whole app down (the old "Unhandled std::terminate()").
     std::string boot_error;
     try {
+#ifdef VITA3K_IOS_GER_ONLY
+        SDL_Log("God Eater Resurrection iOS: initialize_renderer (native GXM/Metal)");
+#else
         SDL_Log("Vita3K iOS: initialize_renderer (Vulkan/MoltenVK)");
+#endif
         if (!session_controller.initialize_renderer(frame_host)) {
             boot_error = "Could not initialise the graphics renderer.";
         } else {
