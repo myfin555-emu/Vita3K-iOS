@@ -1,0 +1,186 @@
+name: Build GE:R Native Metal iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ios/ger-native-metal-isolated
+    paths:
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "ios/**"
+      - "vita3k/**"
+      - "external/**"
+      - ".ci/package-ios.sh"
+      - ".github/workflows/ios-ger-native-metal.yml"
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "ios/**"
+      - "vita3k/**"
+      - "external/**"
+      - ".ci/package-ios.sh"
+      - ".github/workflows/ios-ger-native-metal.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ger-native-metal-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-support-tests:
+    name: Native support tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Build and run native tests
+        run: |
+          cmake -S ios/tests -B build-native-tests
+          cmake --build build-native-tests
+          ctest --test-dir build-native-tests --output-on-failure
+
+  unsigned-ipa:
+    needs: native-support-tests
+    name: GE:R Native Metal arm64 device IPA
+    runs-on: macos-15
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out source and upstream dependencies
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Select Xcode 26 toolchain
+        run: |
+          xcode_apps=(/Applications/Xcode_26*.app)
+          if [[ ! -d "${xcode_apps[0]}" ]]; then
+            echo "::error::No Xcode 26 installation is present on this macos-15 runner."
+            ls -1 /Applications | grep '^Xcode' || true
+            exit 1
+          fi
+          selected_xcode="${xcode_apps[${#xcode_apps[@]}-1]}"
+          echo "Selecting ${selected_xcode}"
+          sudo xcode-select --switch "${selected_xcode}/Contents/Developer"
+          xcode_ver="$(xcodebuild -version | head -1 | tr ' ' '-')"
+          echo "XCODE_VER=${xcode_ver}" >> "$GITHUB_ENV"
+
+      - name: Apply iOS submodule patches
+        run: |
+          git -C external/dynarmic apply --verbose \
+            "${GITHUB_WORKSPACE}/ios/patches/0001-oaknut-ios-rwx-jit.patch"
+          git -C external/dynarmic diff --check
+          git -C external/dynarmic diff --name-only | grep -Fx \
+            "externals/oaknut/include/oaknut/code_block.hpp"
+          git -C external/dynarmic diff --name-only | grep -Fx \
+            "src/dynarmic/backend/arm64/address_space.cpp"
+          git -C external/dynarmic diff --name-only | grep -Fx \
+            "src/dynarmic/common/spin_lock_arm64.cpp"
+
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iPhoneOS SDK ${sdk_version}"
+          [[ "${sdk_version%%.*}" -ge 26 ]] || {
+            echo "::error::Selected Xcode does not provide an iOS 26 SDK (found ${sdk_version})."
+            exit 1
+          }
+          cmake --version
+
+      - name: Bootstrap pinned vcpkg
+        run: |
+          mkdir -p build-deps
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git build-deps/vcpkg
+          git -C build-deps/vcpkg checkout 77df67cfff9c12ccfdb52284e07c87c75092f723
+          ./build-deps/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$PWD/build-deps/vcpkg" >> "$GITHUB_ENV"
+
+      - name: Restore iOS vcpkg binary archive
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-
+            vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-
+
+      - name: Configure GE:R Native Metal iOS application
+        run: |
+          cmake -S . -B build-ios-ger-metal -G Xcode \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios \
+            -DVCPKG_OVERLAY_TRIPLETS="$PWD/ios/triplets" \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DVITA3K_BUILD_IOS_UPSTREAM_CORE=ON \
+            -DVITA3K_BUILD_IOS=OFF \
+            -DVITA3K_IOS_DEPLOYMENT_TARGET=16.0 \
+            -DVITA3K_IOS_LINK_CORE=ON \
+            -DVITA3K_IOS_GER_ONLY=ON \
+            -DVITA3K_IOS_GER_METAL_FOUNDATION=ON \
+            -DVITA3K_FORCE_SYSTEM_BOOST=ON \
+            -DUSE_DISCORD_RICH_PRESENCE=OFF \
+            -DUSE_VITA3K_UPDATE=OFF \
+            -DUSE_LTO=NEVER
+
+      - name: Save iOS vcpkg binary archive
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-${{ github.run_id }}
+
+      - name: Build unsigned GE:R Native Metal device application
+        run: |
+          cmake --build build-ios-ger-metal \
+            --config Release \
+            --target Vita3KiOS \
+            -- \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Verify GE:R appliance bundle
+        run: |
+          app="build-ios-ger-metal/ios/Release-iphoneos/GodEaterResurrection.app"
+          test -d "$app"
+          test -f "$app/GodEaterResurrection"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist" | grep -Fx "org.vita3k.ger.a11"
+
+      - name: Normalize GE:R bundle for IPA packager
+        run: |
+          app="build-ios-ger-metal/ios/Release-iphoneos/GodEaterResurrection.app"
+          mv "$app/GodEaterResurrection" "$app/Vita3K-iOS"
+          mv "$app" "build-ios-ger-metal/ios/Release-iphoneos/Vita3K-iOS.app"
+
+      - name: Package and verify unsigned GE:R IPA
+        run: |
+          mkdir -p artifacts
+          bash ./.ci/package-ios.sh \
+            --build-dir build-ios-ger-metal \
+            --configuration Release \
+            --output artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa
+
+      - name: Inspect packaged IPA
+        run: |
+          /usr/bin/unzip -l artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa | grep -F "Payload/Vita3K-iOS.app/Vita3K-iOS"
+          /usr/bin/unzip -p artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa Payload/Vita3K-iOS.app/Info.plist > artifacts/ger-info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" artifacts/ger-info.plist | grep -Fx "org.vita3k.ger.a11"
+
+      - name: Upload unsigned GE:R Native Metal IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: GodEaterResurrection-NativeMetal-iOS-${{ github.sha }}-unsigned
+          path: artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
