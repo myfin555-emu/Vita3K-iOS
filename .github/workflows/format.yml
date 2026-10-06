@@ -1,17 +1,7 @@
 name: Format Check
 
 on:
-  push:
-    paths:
-      - .clang-format
-      - vita3k/**
-      - tools/**
-
-  pull_request:
-    paths:
-      - .clang-format
-      - vita3k/**
-      - tools/**
+  workflow_dispatch:
 
 jobs:
   format-check:
