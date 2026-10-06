@@ -89,6 +89,7 @@ struct MetalContext final : renderer::Context {
 
     MetalRenderTarget *render_target = nullptr;
     id<MTLCommandBuffer> command_buffer = nil;
+    bool first_render_pass = true;
 
     explicit MetalContext(MetalState &state, MemState &mem);
     ~MetalContext() override;
