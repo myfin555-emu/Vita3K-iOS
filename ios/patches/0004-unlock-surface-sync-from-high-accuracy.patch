@@ -1,0 +1,38 @@
+--- a/vita3k/app/src/app_init.cpp
++++ b/vita3k/app/src/app_init.cpp
+@@ -603,12 +603,10 @@ void apply_renderer_config(EmuEnvState &emuenv) {
+
+     r.res_multiplier = cc.resolution_multiplier;
+     r.set_vsync_state(cc.v_sync);
+-#ifdef VITA3K_PLATFORM_IOS
+-    // High accuracy includes GPU-written surfaces read back by the game.
+-    r.set_surface_sync_state(cc.disable_surface_sync && !cc.high_accuracy);
+-#else
+-    r.set_surface_sync_state(cc.disable_surface_sync);
+-#endif
++    // Surface sync is independent of high accuracy. High accuracy still enables
++    // shader interlock / disables texture viewport; surface sync is the
++    // expensive GPU→CPU readback path (especially on iOS staging buffers) and
++    // must remain a user choice for performance.
++    r.set_surface_sync_state(cc.disable_surface_sync);
+     r.set_screen_filter(cc.screen_filter);
+     r.set_anisotropic_filtering(cc.anisotropic_filtering);
+     r.set_stretch_display(cc.stretch_the_display_area);
+@@ -704,12 +702,10 @@ void apply_config(EmuEnvState &emuenv) {
+
+     auto &r = *emuenv.renderer;
+     r.set_vsync_state(cc.v_sync);
+-#ifdef VITA3K_PLATFORM_IOS
+-    // High accuracy includes GPU-written surfaces read back by the game.
+-    r.set_surface_sync_state(cc.disable_surface_sync && !cc.high_accuracy);
+-#else
+-    r.set_surface_sync_state(cc.disable_surface_sync);
+-#endif
++    // Surface sync is independent of high accuracy. High accuracy still enables
++    // shader interlock / disables texture viewport; surface sync is the
++    // expensive GPU→CPU readback path (especially on iOS staging buffers) and
++    // must remain a user choice for performance.
++    r.set_surface_sync_state(cc.disable_surface_sync);
+     r.set_screen_filter(cc.screen_filter);
+     r.set_anisotropic_filtering(cc.anisotropic_filtering);
+     r.set_stretch_display(cc.stretch_the_display_area);
