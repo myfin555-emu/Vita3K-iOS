@@ -1,3 +1,5 @@
+option(VITA3K_IOS_GER_METAL_FOUNDATION "Build the isolated GE:R native Metal renderer foundation" OFF)
+
 add_library(
 	renderer
 	STATIC
@@ -53,6 +55,12 @@ target_link_libraries(renderer PRIVATE dialog ddspp SDL3::SDL3 stb ffmpeg xxHash
 
 if(ANDROID)
 	target_link_libraries(renderer PRIVATE android adrenotools)
+endif()
+
+if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_METAL_FOUNDATION)
+    target_sources(renderer PRIVATE src/metal/ger_metal_backend.mm)
+    target_link_libraries(renderer PRIVATE "-framework Metal" "-framework Foundation")
+    target_compile_definitions(renderer PRIVATE VITA3K_IOS_GER_METAL_FOUNDATION=1)
 endif()
 
 if(APPLE AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)

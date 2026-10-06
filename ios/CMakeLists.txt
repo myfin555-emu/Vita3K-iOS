@@ -4,6 +4,16 @@ cmake_minimum_required(VERSION 3.22)
 set(VITA3K_IOS_DEPLOYMENT_TARGET "16.0" CACHE STRING "Minimum supported iOS version")
 set(VITA3K_IOS_BUNDLE_ID "org.vita3k.experimental.ios" CACHE STRING "Application bundle identifier")
 option(VITA3K_IOS_LINK_CORE "Link the first upstream Vita3K core slice" ON)
+option(VITA3K_IOS_GER_ONLY "Build the iOS frontend as a God Eater Resurrection-only appliance" OFF)
+option(VITA3K_IOS_GER_METAL_FOUNDATION "Compile the isolated GE:R native Metal renderer foundation" OFF)
+
+if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
+    message(FATAL_ERROR "VITA3K_IOS_GER_METAL_FOUNDATION requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON.")
+endif()
+
+if(VITA3K_IOS_GER_ONLY AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
+    message(FATAL_ERROR "VITA3K_IOS_GER_ONLY requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON.")
+endif()
 
 if(NOT VITA3K_IOS_LINK_CORE)
     message(FATAL_ERROR
@@ -128,8 +138,16 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
         XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon")
 endif()
 
+if(VITA3K_IOS_GER_ONLY)
+    set_target_properties(Vita3KiOS PROPERTIES
+        OUTPUT_NAME "GodEaterResurrection"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.vita3k.ger.a11")
+else()
+    set_target_properties(Vita3KiOS PROPERTIES
+        OUTPUT_NAME "Vita3K-iOS")
+endif()
+
 set_target_properties(Vita3KiOS PROPERTIES
-    OUTPUT_NAME "Vita3K-iOS"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
     XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"

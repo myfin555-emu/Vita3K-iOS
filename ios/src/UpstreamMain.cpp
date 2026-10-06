@@ -2391,6 +2391,15 @@ void apply_game_session_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &s
 
 std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
     auto games = native_games(emuenv);
+#ifdef VITA3K_IOS_GER_ONLY
+    constexpr std::array<std::string_view, 4> kGERTitleIds = {
+        "PCSG00719", "PCSE00801", "PCSB00874", "PCSH00199"
+    };
+    games.erase(std::remove_if(games.begin(), games.end(), [](const auto &game) {
+        return std::find(kGERTitleIds.begin(), kGERTitleIds.end(), game.title_id) == kGERTitleIds.end();
+    }), games.end());
+    LOG_INFO("GE:R-only frontend: {} supported title(s) visible", games.size());
+#endif
     if (games.empty()) {
         LOG_WARN("No installed titles were found under {}. Showing native empty-library instructions.",
             emuenv.vita_fs_path / "ux0/app");
