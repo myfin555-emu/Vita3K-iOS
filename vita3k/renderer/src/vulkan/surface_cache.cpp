@@ -1551,6 +1551,7 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
             memcpy(pixels + row * surface->stride_bytes, source + row * surface->stride_bytes, row_bytes);
 
 #ifdef VITA3K_PLATFORM_IOS
+#ifndef NDEBUG
         const size_t byte_count = static_cast<size_t>(surface->stride_bytes) * surface->original_height;
         // Per-surface diagnostic, rate-limited to ~1 line per surface per 3s so
         // it shows STEADY-STATE content (the earlier one-shot version only saw
@@ -1591,6 +1592,7 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
                     sampled ? static_cast<int>(nonzero * 100 / sampled) : 0);
             }
         }
+#endif#endif
 #endif
 
         const bool is_swizzle_identity = surface->swizzle.r == vk::ComponentSwizzle::eR
