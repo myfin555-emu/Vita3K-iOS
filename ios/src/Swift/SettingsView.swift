@@ -72,9 +72,6 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         model.save()
-                        // Per-game settings persist immediately in the native
-                        // frontend. Global settings play after the core reports
-                        // that its commit completed.
                         if model.isPerGame {
                             HomeSoundEffects.play(.sparkle)
                         }
@@ -135,10 +132,6 @@ struct SettingsView: View {
         }
     }
 
-    /// Export runs on a background thread and reports through the library's
-    /// busy overlay and status toast - both of which live *behind* this sheet.
-    /// So this closes Settings first, exactly as Done does, and the work is
-    /// visible instead of appearing to do nothing at all.
     private func exportGames() {
         model.save()
         onFinish()
@@ -146,12 +139,6 @@ struct SettingsView: View {
         Bridge.exportLibraryArchive()
     }
 
-    /// Imports need the same treatment as exportGames(): once a file is picked,
-    /// the install progress and its result toast are drawn on the library,
-    /// behind this sheet. Leaving Settings up made a running import look like
-    /// nothing had happened until the user dragged the sheet away themselves.
-    /// The picker is presented once the sheet has actually gone - presenting
-    /// into a controller that is still dismissing is dropped by UIKit.
     private func importGames() {
         model.save()
         onFinish()
@@ -170,8 +157,6 @@ struct SettingsView: View {
 
     private var graphicsSection: some View {
         Section {
-            // A labelled slider rather than a stepper: the multiplier is
-            // continuous and the exact number matters less than the direction.
             LabeledContent("Resolution") {
                 Text(model.resolutionLabel)
                     .foregroundStyle(.secondary)
@@ -187,11 +172,7 @@ struct SettingsView: View {
             .accessibilityValue(model.resolutionLabel)
 
             Toggle("High accuracy", isOn: $model.highAccuracy)
-                .onChange(of: model.highAccuracy) { enabled in
-                    if enabled { model.surfaceSync = true }
-                }
             Toggle("Surface sync", isOn: $model.surfaceSync)
-                .disabled(model.highAccuracy)
             Toggle("Double buffer", isOn: $model.doubleBuffer)
             Toggle("Async pipeline compilation", isOn: $model.asyncPipelineCompilation)
 
@@ -203,13 +184,11 @@ struct SettingsView: View {
         } header: {
             Text("Graphics")
         } footer: {
-            // Replaces the library's "?" button: the explanation belongs next
-            // to the switches it is about, not behind a glyph on the home
-            // screen. Kept to the three symptoms people actually report.
             Text("""
-                Graphics look wrong? Try High accuracy. \
-                High accuracy includes Surface sync for lighting and effects. \
-                Character models shattered? Make sure Double buffer is off.
+                Graphics look wrong? Try High accuracy (shader interlock). \
+                Surface sync is separate: leave it off on iOS for speed unless \
+                lighting or effects look wrong. Character models shattered? \
+                Make sure Double buffer is off.
                 """)
         }
     }
@@ -355,8 +334,6 @@ struct SettingsView: View {
                 LibraryState.shared.setSortOption(rawValue: newValue)
             }
             Button {
-                // Same reason as exportGames(): the progress lives behind this
-                // sheet, so close it first.
                 model.save()
                 onFinish()
                 LibraryStateBridge.setBusy("Exporting saves…")
@@ -365,8 +342,6 @@ struct SettingsView: View {
                 Label("Export all game saves", systemImage: "square.and.arrow.up")
             }
             Button {
-                // Same reason as importGames(): close Settings so the import
-                // progress on the library is actually visible.
                 model.save()
                 onFinish()
                 Bridge.presentAllSaveImportPicker()
@@ -380,7 +355,6 @@ struct SettingsView: View {
         }
     }
 
-    /// Enabling any metric un-hides an overlay the user dismissed in-game.
     private func enablePerfOverlay() {
         Bridge.performanceOverlayDidEnableMetric()
     }
@@ -398,8 +372,6 @@ struct SettingsView: View {
                 }
             }
             if !model.firmwareReady && !model.missingFirmware.isEmpty {
-                // A plain label, not an alert: this is steady-state
-                // information, and the library already blocks launching.
                 Label(model.missingFirmware, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.secondary)
             }
@@ -440,71 +412,31 @@ struct SettingsView: View {
             Button("Use global settings", role: .destructive) {
                 showingResetConfirmation = true
             }
-            .confirmationDialog(
-                "Remove this game's custom settings?",
-                isPresented: $showingResetConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Use global settings", role: .destructive) {
-                    model.resetPerGameOverrides()
-                    onFinish()
-                }
-            } message: {
-                Text("This game will follow the global settings the next time it launches.")
-            }
         } footer: {
-            Text("These settings apply only to this game and take effect the next time it launches.")
+            Text("Removes the per-game override so this title uses the app-wide settings again.")
+        }
+        .confirmationDialog("Use global settings for this game?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
+            Button("Use global settings", role: .destructive) {
+                model.resetToGlobal()
+                onFinish()
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 }
 
-/// Raw values are shared with NativeFrontend.mm. The lock is off by default;
-/// once enabled, Portrait is its initial choice. Both landscape directions
-/// remain explicit so controls and cables can sit on the user's preferred side.
-enum OrientationLockOption: String, CaseIterable, Identifiable {
-    case portrait
-    case landscape
-    case landscapeFlipped
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .portrait: "Portrait"
-        case .landscape: "Landscape"
-        case .landscapeFlipped: "Landscape (Flipped)"
-        }
-    }
-}
-
-/// Face-button remapping, split out as its own screen: four related pickers is
-/// more than a section should carry, and it keeps the root list short.
-@MainActor
-private struct FaceButtonLayoutView: View {
+/// Face-button position remapping for controllers that report Xbox-style layouts.
+struct FaceButtonLayoutView: View {
     @ObservedObject var model: SettingsModel
-
-    private static let positions = ["Bottom", "Right", "Left", "Top"]
 
     var body: some View {
         Form {
-            Section {
-                picker("Cross", selection: $model.bindCross)
-                picker("Circle", selection: $model.bindCircle)
-                picker("Square", selection: $model.bindSquare)
-                picker("Triangle", selection: $model.bindTriangle)
-            } footer: {
-                Text("Choose which physical button position triggers each Vita button.")
+            Picker("Layout", selection: $model.faceButtonLayout) {
+                Text("PlayStation").tag(0)
+                Text("Xbox / Nintendo").tag(1)
             }
+            .pickerStyle(.inline)
         }
-        .navigationTitle("Face Buttons")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func picker(_ label: String, selection: Binding<Int>) -> some View {
-        Picker(label, selection: selection) {
-            ForEach(Array(Self.positions.enumerated()), id: \.offset) { index, name in
-                Text(name).tag(index)
-            }
-        }
+        .navigationTitle("Face button layout")
     }
 }
