@@ -1072,6 +1072,11 @@ void VKState::late_init(const Config &cfg, const std::string_view game_id, MemSt
 
     pipeline_cache.init(support_rasterized_order_access);
 
+    // Restore the persistent Vulkan/MoltenVK pipeline cache before the first
+    // guest draw. The cache was already being written on shutdown/idle, but
+    // without this load the next launch paid shader/pipeline compilation again.
+    pipeline_cache.read_pipeline_cache();
+
     texture_cache.init(true, texture_folder(), game_id);
 }
 
