@@ -352,15 +352,27 @@ void MetalContext::set_vertex_stream(size_t index, size_t size, Ptr<const uint8_
 void MetalContext::set_uniform(bool vertex, int block, uint32_t size, const Ptr<const void> data) {
     if (block < 0 || block >= static_cast<int>(SCE_GXM_MAX_TEXTURE_UNITS) || !data || !size)
         return;
-    auto buffer = make_shared_buffer(state.device, data.get(mem), size);
-    if (vertex) vertex_uniforms[block] = buffer;
-    else fragment_uniforms[block] = buffer;
+    auto *program = vertex ? record.vertex_program.get(mem)->renderer_data.get()
+                            : record.fragment_program.get(mem)->renderer_data.get();
+    if (!program) return;
+    const auto &offsets = program->uniform_buffer_data_offsets;
+    if (block < 0 || block >= static_cast<int>(offsets.size())) return;
+    const uint32_t offset = offsets[block];
+    if (offset == static_cast<uint32_t>(-1)) return;
+    auto &blob = vertex ? vertex_ubo_blob : fragment_ubo_blob;
+    if (blob.size() < static_cast<size_t>(offset) + size)
+        blob.resize(static_cast<size_t>(offset) + size);
+    const void *src = data.get(mem);
+    if (!src) return;
+    memcpy(blob.data() + offset, src, size);
+    auto buffer = make_shared_buffer(state.device, blob.data(), blob.size());
+    if (vertex) vertex_uniforms[0] = buffer;
+    else fragment_uniforms[0] = buffer;
 }
 
 void MetalContext::set_texture(uint32_t index, const SceGxmTexture &texture, bool vertex) {
     if (index >= SCE_GXM_MAX_TEXTURE_UNITS) return;
     if (vertex) index -= SCE_GXM_MAX_TEXTURE_UNITS;
-    texture_cache::dummy;
 }
 
 void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
@@ -368,8 +380,8 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     if (!render_target || !record.vertex_program || !record.fragment_program || !count)
         return;
 
-    const auto *vp = dynamic_cast<MetalVertexProgram *>(record.vertex_program.get(mem).get()->renderer_data.get());
-    const auto *fp = dynamic_cast<MetalFragmentProgram *>(record.fragment_program.get(mem).get()->renderer_data.get());
+    const auto *vp = dynamic_cast<const MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
+    const auto *fp = dynamic_cast<const MetalFragmentProgram *>(record.fragment_program.get(mem)->renderer_data.get());
     if (!vp || !fp) return;
 
     auto pipeline = pipeline_for_draw();
@@ -479,8 +491,8 @@ id<MTLDepthStencilState> MetalContext::depth_state_for_draw() {
 }
 
 id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
-    auto *vp = dynamic_cast<MetalVertexProgram *>(record.vertex_program.get(mem).get()->renderer_data.get());
-    auto *fp = dynamic_cast<MetalFragmentProgram *>(record.fragment_program.get(mem).get()->renderer_data.get());
+    auto *vp = dynamic_cast<MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
+    auto *fp = dynamic_cast<MetalFragmentProgram *>(record.fragment_program.get(mem)->renderer_data.get());
     if (!vp || !fp) return nil;
     const auto key = pointer_key(vp, fp, record);
     auto found = pipelines.find(key);
@@ -488,8 +500,10 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
 
     if (!vp->function || !fp->function) {
         const shader::Hints hints = shader_hints;
-        const auto v = compile_shader(*gxp_ptr_map.at(vp->hash), fmt::format("{}", vp->hash), state.features, hints, false);
-        const auto f = compile_shader(*gxp_ptr_map.at(fp->hash), fmt::format("{}", fp->hash), state.features, hints, fp->has_blend && record.is_maskupdate);
+        const auto *vgxp = state.gxp_ptr_map.at(vp->hash);
+        const auto *fgxp = state.gxp_ptr_map.at(fp->hash);
+        const auto v = compile_shader(*vgxp, "ger-metal-vert", state.features, hints, false);
+        const auto f = compile_shader(*fgxp, "ger-metal-frag", state.features, hints, fp->has_blend && record.is_maskupdate);
         if (v.first.empty() || f.first.empty()) return nil;
         vp->msl = v.first; vp->entry = v.second;
         fp->msl = f.first; fp->entry = f.second;
@@ -728,14 +742,9 @@ std::vector<uint32_t> MetalState::dump_frame(DisplayState &display, uint32_t &wi
         std::lock_guard<std::mutex> guard(display.display_info_mutex);
         frame = display.next_rendered_frame;
     }
-    width = static_cast<uint32_t>(frame.image_size.x * res_multiplier);
-    height = static_cast<uint32_t>(frame.image_size.y * res_multiplier);
-    std::vector<uint32_t> result(static_cast<size_t>(width) * height);
-    if (frame.base) {
-        const auto *src = static_cast<const uint32_t *>(frame.base.get(*reinterpret_cast<MemState *>(nullptr)));
-        (void)src;
-    }
-    return result;
+    width = static_cast<uint32_t>(frame.image_size.x);
+    height = static_cast<uint32_t>(frame.image_size.y);
+    return {};
 }
 
 uint32_t MetalState::get_features_mask() {
@@ -820,10 +829,11 @@ void sync_texture(MetalContext &context, MemState &mem, size_t index,
     const size_t unit = vertex ? index - SCE_GXM_MAX_TEXTURE_UNITS : index;
     if (unit >= SCE_GXM_MAX_TEXTURE_UNITS) return;
     context.state.texture_cache.cache_and_bind_texture(texture, mem);
-    const auto *info = context.state.texture_cache.current_info;
-    if (!info) return;
-    const auto tex = context.state.texture_cache.texture_at(static_cast<size_t>(info->index));
-    const auto sampler = context.state.texture_cache.sampler_at(context.state.texture_cache.last_bound_sampler_index);
+    const size_t bound = context.state.texture_cache.bound_index();
+    const auto tex = context.state.texture_cache.texture_at(bound);
+    const auto sampler = context.state.texture_cache.sampler_at(
+        context.state.texture_cache.last_bound_sampler_index < TextureCacheSize
+            ? context.state.texture_cache.last_bound_sampler_index : 0);
     if (vertex) {
         context.vertex_textures[unit] = tex;
         context.vertex_samplers[unit] = sampler;
