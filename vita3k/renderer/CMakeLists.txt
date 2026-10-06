@@ -1,5 +1,27 @@
 option(VITA3K_IOS_GER_METAL_FOUNDATION "Build the isolated GE:R native Metal renderer foundation" OFF)
 
+set(RENDERER_VULKAN_SOURCES
+	src/vulkan/allocator.cpp
+	src/vulkan/context.cpp
+	src/vulkan/creation.cpp
+	src/vulkan/gxm_to_vulkan.cpp
+	src/vulkan/pipeline_cache.cpp
+	src/vulkan/renderer.cpp
+	src/vulkan/scene.cpp
+	src/vulkan/overlay_renderer.cpp
+	src/vulkan/screen_filters.cpp
+	src/vulkan/screen_renderer.cpp
+	src/vulkan/surface_cache.cpp
+	src/vulkan/sync_state.cpp
+	src/vulkan/texture.cpp
+)
+
+if(NOT (VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_METAL_FOUNDATION))
+	set(RENDERER_VULKAN_SOURCES_ACTIVE ${RENDERER_VULKAN_SOURCES})
+else()
+	set(RENDERER_VULKAN_SOURCES_ACTIVE)
+endif()
+
 add_library(
 	renderer
 	STATIC
@@ -18,20 +40,6 @@ add_library(
 	src/gl/texture.cpp
 	src/gl/uniforms.cpp
 
-	src/vulkan/allocator.cpp
-	src/vulkan/context.cpp
-	src/vulkan/creation.cpp
-	src/vulkan/gxm_to_vulkan.cpp
-	src/vulkan/pipeline_cache.cpp
-	src/vulkan/renderer.cpp
-	src/vulkan/scene.cpp
-	src/vulkan/overlay_renderer.cpp
-	src/vulkan/screen_filters.cpp
-	src/vulkan/screen_renderer.cpp
-	src/vulkan/surface_cache.cpp
-	src/vulkan/sync_state.cpp
-	src/vulkan/texture.cpp
-
 	src/texture/cache.cpp
 	src/texture/format.cpp
 	src/texture/palette.cpp
@@ -47,10 +55,15 @@ add_library(
 	src/state_set.cpp
 	src/sync.cpp
 	src/transfer.cpp
+	${RENDERER_VULKAN_SOURCES_ACTIVE}
 )
 
 target_include_directories(renderer PUBLIC include)
-target_link_libraries(renderer PUBLIC display mem stb shader glutil threads config util vkutil overlay)
+if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_METAL_FOUNDATION)
+	target_link_libraries(renderer PUBLIC display mem stb shader glutil threads config util overlay)
+else()
+	target_link_libraries(renderer PUBLIC display mem stb shader glutil threads config util vkutil overlay)
+endif()
 target_link_libraries(renderer PRIVATE dialog ddspp SDL3::SDL3 stb ffmpeg xxHash::xxhash concurrentqueue)
 
 if(ANDROID)
