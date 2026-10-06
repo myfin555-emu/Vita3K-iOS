@@ -135,13 +135,13 @@ COMMAND(handle_sync_surface_data) {
         // do it as soon as possible
         signal_notifications();
 
-    if (renderer.current_backend == Backend::Vulkan) {
 #ifndef VITA3K_IOS_GER_ONLY
+    if (renderer.current_backend == Backend::Vulkan) {
         vulkan::VKContext *context = reinterpret_cast<vulkan::VKContext *>(render_context);
-#endif
         if (context->is_recording)
             context->stop_recording(vertex_notification, fragment_notification);
     }
+#endif
 
     SceGxmColorSurface *surface = &render_context->record.color_surface;
     if (helper.cmd->status) {
