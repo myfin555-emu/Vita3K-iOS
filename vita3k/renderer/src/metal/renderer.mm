@@ -724,7 +724,8 @@ void sync_texture(MetalContext &context, MemState &mem, size_t index,
     const size_t unit = vertex ? index - SCE_GXM_MAX_TEXTURE_UNITS : index;
     if (unit >= SCE_GXM_MAX_TEXTURE_UNITS) return;
     context.state.texture_cache.cache_and_bind_texture(texture, mem);
-    auto tex = context.state.texture_cache.texture_at(context.state.texture_cache.current_info ? context.state.texture_cache.current_info->index : 0);
+    const size_t bound = context.state.texture_cache.bound_index();
+    auto tex = context.state.texture_cache.texture_at(bound);
     auto samp = context.state.texture_cache.sampler_at(context.state.texture_cache.last_bound_sampler_index);
     if (vertex) {
         context.vertex_textures[unit] = tex;
