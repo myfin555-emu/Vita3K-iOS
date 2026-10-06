@@ -59,6 +59,7 @@ endif()
 
 if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_METAL_FOUNDATION)
     target_sources(renderer PRIVATE src/metal/ger_metal_backend.mm)
+    target_include_directories(renderer PRIVATE "${CMAKE_SOURCE_DIR}/ios/include")
     target_link_libraries(renderer PRIVATE "-framework Metal" "-framework Foundation")
     target_compile_definitions(renderer PRIVATE VITA3K_IOS_GER_METAL_FOUNDATION=1)
 endif()
