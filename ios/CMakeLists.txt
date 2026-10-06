@@ -26,6 +26,7 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
         src/IOSJIT.mm
         src/TsubomiBridge.mm
         src/UpstreamMain.cpp
+        src/PerformanceOptimizations.mm
         src/VirtualController.mm
         ${VITA3K_IOS_SWIFT_SOURCES}
         ${VITA3K_IOS_CUELUME_LICENSE}
