@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cfloat>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -180,7 +181,7 @@ static std::string pointer_key(const void *a, const void *b, const GxmRecordStat
 }
 
 static void remap_msl_bindings(spirv_cross::CompilerMSL &compiler) {
-    auto remap = [&](const spirv_cross::SmallVector<spirv_cross::Resource> &resources,
+    auto remap = [&](const auto &resources,
                      uint32_t texture_base, uint32_t sampler_base) {
         for (const auto &resource : resources) {
             const uint32_t set = compiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
@@ -275,7 +276,40 @@ void MetalTextureCache::configure_texture(const SceGxmTexture &texture) {
     auto *desc = [[MTLTextureDescriptor alloc] init];
     desc.textureType = (texture.texture_type() == SCE_GXM_TEXTURE_CUBE || texture.texture_type() == SCE_GXM_TEXTURE_CUBE_ARBITRARY)
         ? MTLTextureTypeCube : MTLTextureType2D;
-    desc.pixelFormat = MTLPixelFormatRGBA8Unorm;
+    const auto base = gxm::get_base_format(gxm::get_format(texture));
+    switch (base) {
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U8: desc.pixelFormat = MTLPixelFormatR8Unorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_S8: desc.pixelFormat = MTLPixelFormatR8Snorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U4U4U4U4: desc.pixelFormat = MTLPixelFormatABGR4Unorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U1U5U5U5: desc.pixelFormat = MTLPixelFormatA1BGR5Unorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U5U6U5: desc.pixelFormat = MTLPixelFormatB5G6R5Unorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U8U8: desc.pixelFormat = MTLPixelFormatRG8Unorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_S8S8: desc.pixelFormat = MTLPixelFormatRG8Snorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U16: desc.pixelFormat = MTLPixelFormatR16Uint; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_S16: desc.pixelFormat = MTLPixelFormatR16Sint; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_F16: desc.pixelFormat = MTLPixelFormatR16Float; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U8U8U8U8: desc.pixelFormat = MTLPixelFormatRGBA8Unorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_S8S8S8S8: desc.pixelFormat = MTLPixelFormatRGBA8Snorm; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U16U16: desc.pixelFormat = MTLPixelFormatRG16Uint; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_S16S16: desc.pixelFormat = MTLPixelFormatRG16Sint; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_F16F16: desc.pixelFormat = MTLPixelFormatRG16Float; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_F32: desc.pixelFormat = MTLPixelFormatR32Float; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_F16F16F16F16: desc.pixelFormat = MTLPixelFormatRGBA16Float; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U16U16U16U16: desc.pixelFormat = MTLPixelFormatRGBA16Uint; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_S16S16S16S16: desc.pixelFormat = MTLPixelFormatRGBA16Sint; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_F32F32: desc.pixelFormat = MTLPixelFormatRG32Float; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U32U32: desc.pixelFormat = MTLPixelFormatRG32Uint; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U8U8U8:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_S8S8S8:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_U8U3U2:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_P4:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_P8:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_PVRT2BPP:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_PVRT4BPP:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_PVRTII2BPP:
+    case SCE_GXM_TEXTURE_BASE_FORMAT_PVRTII4BPP:
+    default: desc.pixelFormat = MTLPixelFormatRGBA8Unorm; break;
+    }
     desc.width = width;
     desc.height = height;
     desc.mipmapLevelCount = std::max<uint32_t>(1, current_info->mip_count);
@@ -289,9 +323,30 @@ void MetalTextureCache::upload_texture_impl(SceGxmTextureBaseFormat, uint32_t wi
     uint32_t height, uint32_t mip_index, const void *pixels, int face, uint32_t pixels_per_stride) {
     if (!current_info || !pixels || !textures[current_info->index]) return;
     auto tex = textures[current_info->index];
-    if (tex.pixelFormat != MTLPixelFormatRGBA8Unorm) return;
     const uint32_t stride = std::max(width, pixels_per_stride);
-    const size_t bpp = 4;
+    size_t bpp = 4;
+    switch (tex.pixelFormat) {
+    case MTLPixelFormatR8Unorm:
+    case MTLPixelFormatR8Snorm: bpp = 1; break;
+    case MTLPixelFormatRG8Unorm:
+    case MTLPixelFormatRG8Snorm:
+    case MTLPixelFormatR16Uint:
+    case MTLPixelFormatR16Sint:
+    case MTLPixelFormatR16Float:
+    case MTLPixelFormatB5G6R5Unorm:
+    case MTLPixelFormatA1BGR5Unorm:
+    case MTLPixelFormatABGR4Unorm: bpp = 2; break;
+    case MTLPixelFormatRGBA16Float:
+    case MTLPixelFormatRGBA16Uint:
+    case MTLPixelFormatRGBA16Sint: bpp = 8; break;
+    case MTLPixelFormatRG16Uint:
+    case MTLPixelFormatRG16Sint:
+    case MTLPixelFormatRG16Float:
+    case MTLPixelFormatR32Float: bpp = 4; break;
+    case MTLPixelFormatRG32Float:
+    case MTLPixelFormatRG32Uint: bpp = 8; break;
+    default: bpp = 4; break;
+    }
     const size_t row_bytes = stride * bpp;
     const size_t slice = face > 0 ? static_cast<size_t>(face - 1) : 0;
     MTLRegion region = MTLRegionMake2D(0, 0, width, height);
@@ -408,9 +463,12 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     [enc setFrontFacingWinding:record.viewport_flip[1] < 0 ? MTLWindingCounterClockwise : MTLWindingClockwise];
     [enc setViewport:(MTLViewport){0, 0, static_cast<double>(render_target->width), static_cast<double>(render_target->height), 0, 1}];
 
-    for (size_t i = 0; i < vertex_streams.size(); ++i) {
-        if (vertex_streams[i])
-            [enc setVertexBuffer:vertex_streams[i] offset:0 atIndex:4 + i];
+    for (size_t i = 0; i < record.vertex_streams.size(); ++i) {
+        const auto &stream = record.vertex_streams[i];
+        if (!stream.data || !stream.size) continue;
+        auto buffer = make_shared_buffer(state.device, stream.data.get(mem), stream.size);
+        if (buffer)
+            [enc setVertexBuffer:buffer offset:0 atIndex:4 + i];
     }
     for (size_t i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; ++i) {
         if (vertex_textures[i]) {
@@ -443,10 +501,8 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     [enc setVertexBuffer:vert_info_buffer offset:0 atIndex:2];
     [enc setFragmentBuffer:frag_info_buffer offset:0 atIndex:3];
 
-    for (size_t i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; ++i) {
-        if (vertex_uniforms[i]) [enc setVertexBuffer:vertex_uniforms[i] offset:0 atIndex:0];
-        if (fragment_uniforms[i]) [enc setFragmentBuffer:fragment_uniforms[i] offset:0 atIndex:1];
-    }
+    if (vertex_uniforms[0]) [enc setVertexBuffer:vertex_uniforms[0] offset:0 atIndex:0];
+    if (fragment_uniforms[0]) [enc setFragmentBuffer:fragment_uniforms[0] offset:0 atIndex:1];
 
     if (index_type != SCE_GXM_INDEX_FORMAT_U16 && index_type != SCE_GXM_INDEX_FORMAT_U32)
         return;
@@ -499,7 +555,9 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
     if (found != pipelines.end()) return found->second;
 
     if (!vp->function || !fp->function) {
-        const shader::Hints hints = shader_hints;
+        shader::Hints hints = shader_hints;
+        hints.attributes = &vp->attributes;
+        hints.color_format = record.color_surface.colorFormat;
         const auto *vgxp = state.gxp_ptr_map.at(vp->hash);
         const auto *fgxp = state.gxp_ptr_map.at(fp->hash);
         const auto v = compile_shader(*vgxp, "ger-metal-vert", state.features, hints, false);
@@ -508,13 +566,15 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
         vp->msl = v.first; vp->entry = v.second;
         fp->msl = f.first; fp->entry = f.second;
         NSError *error = nil;
-        vp->function = [state.device newLibraryWithSource:vp->msl options:nil error:&error].newFunctionWithName(vp->entry);
+        id<MTLLibrary> vl = [state.device newLibraryWithSource:[NSString stringWithUTF8String:vp->msl.c_str()] options:nil error:&error];
+        vp->function = vl ? [vl newFunctionWithName:[NSString stringWithUTF8String:vp->entry.c_str()]] : nil;
         if (!vp->function) {
             LOG_ERROR("GE:R Metal vertex MSL compile failed: {}", error.localizedDescription.UTF8String);
             return nil;
         }
         error = nil;
-        fp->function = [state.device newLibraryWithSource:fp->msl options:nil error:&error].newFunctionWithName(fp->entry);
+        id<MTLLibrary> fl = [state.device newLibraryWithSource:[NSString stringWithUTF8String:fp->msl.c_str()] options:nil error:&error];
+        fp->function = fl ? [fl newFunctionWithName:[NSString stringWithUTF8String:fp->entry.c_str()]] : nil;
         if (!fp->function) {
             LOG_ERROR("GE:R Metal fragment MSL compile failed: {}", error.localizedDescription.UTF8String);
             return nil;
