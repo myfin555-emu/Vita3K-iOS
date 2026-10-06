@@ -2,37 +2,6 @@ name: Build upstream-core iOS IPA
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ios-upstream-core
-    paths:
-      - "CMakeLists.txt"
-      - "vcpkg.json"
-      - "ios/**"
-      - "vita3k/**"
-      - "external/**"
-      - ".ci/package-ios.sh"
-      - ".ci/install-moltenvk.cmake"
-      - ".github/workflows/ios-upstream.yml"
-      - ".github/workflows/vulkan-checks.yml"
-  pull_request:
-    paths:
-      - "CMakeLists.txt"
-      - "vcpkg.json"
-      - "ios/**"
-      - "vita3k/**"
-      - "external/**"
-      - ".ci/package-ios.sh"
-      - ".ci/install-moltenvk.cmake"
-      - ".github/workflows/ios-upstream.yml"
-      - ".github/workflows/vulkan-checks.yml"
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ios-upstream-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   native-support-tests:
