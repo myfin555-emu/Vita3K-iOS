@@ -9,6 +9,7 @@
 #undef Ptr
 @class CAMetalLayer;
 
+#include <display/state.h>
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
 
