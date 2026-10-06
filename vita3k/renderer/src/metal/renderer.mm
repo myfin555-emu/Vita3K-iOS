@@ -323,7 +323,9 @@ void MetalTextureCache::configure_texture(const SceGxmTexture &texture) {
     desc.mipmapLevelCount = std::max<uint32_t>(1, current_info->mip_count);
     desc.arrayLength = 1;
     desc.usage = MTLTextureUsageShaderRead;
-    desc.storageMode = MTLStorageModePrivate;
+    // CPU upload path uses replaceRegion:withBytes:. Private textures require
+    // a staging resource + blit, so keep this correctness-first path shared.
+    desc.storageMode = MTLStorageModeShared;
     textures[index] = [state.device newTextureWithDescriptor:desc];
 }
 
@@ -452,14 +454,16 @@ void MetalContext::set_uniform(bool vertex, int block, uint32_t size, const Ptr<
     else fragment_uniforms[0] = buffer;
 }
 
-void MetalContext::set_texture(uint32_t index, const SceGxmTexture &texture, bool vertex) {
+void MetalContext::set_texture(uint32_t index, const SceGxmTexture &, bool) {
+    // Binding is owned by sync_texture(), which has cache/sampler context.
+    // Keep this compatibility hook side-effect free; the old vertex branch
+    // could subtract from an already-unit-sized index and underflow.
     if (index >= SCE_GXM_MAX_TEXTURE_UNITS) return;
-    if (vertex) index -= SCE_GXM_MAX_TEXTURE_UNITS;
 }
 
 void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     Ptr<const void> indices, uint32_t count, uint32_t instance_count) {
-    if (!render_target || !record.vertex_program || !record.fragment_program || !count)
+    if (!render_target || !record.vertex_program || !record.fragment_program || !count || !indices)
         return;
 
     const auto *vp = dynamic_cast<const MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
@@ -938,7 +942,8 @@ bool create(MetalState &state, std::unique_ptr<RenderTarget> &target,
         MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
             width:rt->width height:rt->height mipmapped:NO];
         d.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-        d.storageMode = MTLStorageModePrivate; d;
+        // sync_surface() currently reads this target back with getBytes().
+        d.storageMode = MTLStorageModeShared; d;
     })];
     MTLTextureDescriptor *dd = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float_Stencil8
         width:rt->width height:rt->height mipmapped:NO];
