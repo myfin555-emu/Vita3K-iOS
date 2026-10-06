@@ -58,6 +58,16 @@ if(ANDROID)
 endif()
 
 if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_METAL_FOUNDATION)
+    # The Metal state header contains Objective-C protocol types (id<MTL...>).
+    # These renderer translation units are normally C++, so compile them as
+    # Objective-C++ for the isolated iOS GE:R target.
+    set_source_files_properties(
+        src/creation.cpp
+        src/renderer.cpp
+        src/scene.cpp
+        src/state_set.cpp
+        PROPERTIES LANGUAGE OBJCXX
+    )
     target_sources(renderer PRIVATE src/metal/renderer.mm)
     target_include_directories(renderer PRIVATE include)
     target_link_libraries(renderer PRIVATE spirv-cross-msl "-framework Metal" "-framework QuartzCore")
