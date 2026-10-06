@@ -232,7 +232,7 @@ target_include_directories(CLI11 INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/cli11")
 
 add_library(vulkan INTERFACE)
 target_include_directories(vulkan INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/VulkanMemoryAllocator-Hpp/Vulkan-Headers/include")
-if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
+if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND NOT VITA3K_IOS_GER_ONLY)
 	set(VITA3K_IOS_MOLTENVK_LIBRARY "" CACHE FILEPATH "Path to the iOS arm64 MoltenVK static library")
 	set(VITA3K_IOS_MOLTENVK_INCLUDE_DIR "" CACHE PATH "Path to MoltenVK headers")
 	if(NOT EXISTS "${VITA3K_IOS_MOLTENVK_LIBRARY}")
