@@ -14,7 +14,11 @@ extension View {
             if let tint { glassEffect(.regular.tint(tint), in: shape) }
             else { glassEffect(.regular, in: shape) }
         } else {
-            background(.regularMaterial, in: shape)
+            // Pre-Liquid-Glass: material over the live Metal drawable. On the
+            // first frame the drawable is often still clear, so callers bump
+            // `liquidGlassEpoch` after appear to rebuild this background once
+            // the game has presented.
+            background(.ultraThinMaterial, in: shape)
                 .overlay { shape.fill(tint?.opacity(0.25) ?? .clear).allowsHitTesting(false) }
         }
     }

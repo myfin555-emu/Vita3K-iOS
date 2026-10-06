@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// Epoch that forces in-game glass/material surfaces to rebuild after the
+/// Metal view has presented a real frame. Without this, the first sample of
+/// Liquid Glass (or `.regularMaterial` on older iOS) often reads an empty
+/// backdrop and the controls look fully opaque until the setting is toggled.
+private struct LiquidGlassEpochKey: EnvironmentKey {
+    static let defaultValue: Int = 0
+}
+
+extension EnvironmentValues {
+    var liquidGlassEpoch: Int {
+        get { self[LiquidGlassEpochKey.self] }
+        set { self[LiquidGlassEpochKey.self] = newValue }
+    }
+}
+
 /// The material the in-game overlay draws its surfaces with.
 ///
 /// Liquid Glass works by reading back what is behind it. Behind the on-screen
@@ -23,11 +38,16 @@ struct OverlaySurface<S: Shape>: ViewModifier {
     var tinted = false
 
     @AppStorage(DefaultsKey.liquidGlassInGame.rawValue) private var liquidGlass = true
+    @Environment(\.liquidGlassEpoch) private var liquidGlassEpoch
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if liquidGlass {
-            content.compatibleGlass(shape, tint: tinted ? .accentColor : nil)
+            content
+                .compatibleGlass(shape, tint: tinted ? .accentColor : nil)
+                // Rebuild when the host bumps the epoch (post-launch) or when
+                // the user toggles the setting — both recreate backdrop sampling.
+                .id("glass-\(liquidGlass)-\(liquidGlassEpoch)-\(tinted)")
         } else {
             content
                 // Glass resolves its own contrast against whatever is behind
