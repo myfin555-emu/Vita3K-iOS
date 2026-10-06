@@ -1,0 +1,80 @@
+--- a/ios/src/UpstreamMain.cpp
++++ b/ios/src/UpstreamMain.cpp
+@@ -70,6 +70,7 @@
+ #include <unistd.h>
+ 
+ #include <vita3k_ios/NativeFrontend.h>
++#include <vita3k_ios/PerformanceOptimizations.h>
+ #include <vita3k_ios/VirtualController.h>
+ 
+ #include <algorithm>
+@@ -2927,6 +2928,19 @@
+         emuenv->cfg.current_config.fps_hack, emuenv->cfg.turbo_mode);
+     emuenv->display.fps_limit.store(60, std::memory_order_relaxed);
+ 
++    // Prefer async pipelines when the saved config left them unset/false on a
++    // cold install — shader compile stutter is the #1 source of mid-game hitches.
++    if (!emuenv->cfg.current_config.async_pipeline_compilation) {
++        emuenv->cfg.current_config.async_pipeline_compilation = true;
++        LOG_INFO("iOS stability: enabled async_pipeline_compilation for this session");
++    }
++    {
++        const auto boot_sample = vita3k_ios::sample_runtime_pressure();
++        LOG_INFO("iOS boot pressure: thermal={} rss={}MiB available={}MiB",
++            vita3k_ios::ThermalThrottleManager::state_name(boot_sample.thermal),
++            boot_sample.rss_mb, boot_sample.available_mb);
++    }
++
+     const bool has_virtual_controller = vita3k_ios_attach_virtual_controller();
+     if (has_virtual_controller) {
+         // Register the virtual joystick immediately instead of waiting for the
+@@ -2971,13 +2985,43 @@
+                 last_setframe_change_ms = now_ms;
+             }
+ 
+-            // Sample the OS memory headroom periodically. If a freeze is really
+-            // a jetsam kill, the log shows this number collapsing toward zero
+-            // right before the process dies (no signal is delivered for jetsam).
+-            if (now_ms - last_mem_log_ms >= 10000) {
++            // Sample thermal + memory pressure. Thermal *serious/critical*
++            // auto-scales GPU quality so the OS does not hard-throttle the
++            // whole process (which feels like random freezes). Memory headroom
++            // collapsing toward zero is the signature of an impending jetsam.
++            if (now_ms - last_mem_log_ms >= 2000) {
+                 last_mem_log_ms = now_ms;
+-                LOG_INFO("iOS memory headroom: {} MiB available before jetsam",
+-                    static_cast<unsigned long long>(os_proc_available_memory() / (1024 * 1024)));
++                const auto sample = vita3k_ios::sample_runtime_pressure();
++                LOG_INFO("iOS runtime pressure: thermal={} memory_pressure={} rss={}MiB available={}MiB",
++                    vita3k_ios::ThermalThrottleManager::state_name(sample.thermal),
++                    sample.memory_pressure, sample.rss_mb, sample.available_mb);
++
++                static vita3k_ios::ThermalThrottleManager::ThermalState last_thermal =
++                    vita3k_ios::ThermalThrottleManager::ThermalState::NOMINAL;
++                if (sample.thermal != last_thermal) {
++                    vita3k_ios::ThermalThrottleManager::ScalingAdvice baseline;
++                    baseline.resolution_multiplier = emuenv->cfg.current_config.resolution_multiplier;
++                    baseline.high_accuracy = emuenv->cfg.current_config.high_accuracy;
++                    baseline.async_pipeline_compilation = emuenv->cfg.current_config.async_pipeline_compilation;
++                    baseline.anisotropic_filtering = emuenv->cfg.current_config.anisotropic_filtering;
++                    baseline.surface_sync = !emuenv->cfg.current_config.disable_surface_sync;
++
++                    const auto advice = vita3k_ios::ThermalThrottleManager::advice_for(sample.thermal, baseline);
++                    emuenv->cfg.current_config.resolution_multiplier = advice.resolution_multiplier;
++                    emuenv->cfg.current_config.high_accuracy = advice.high_accuracy;
++                    emuenv->cfg.current_config.async_pipeline_compilation = advice.async_pipeline_compilation;
++                    emuenv->cfg.current_config.anisotropic_filtering = advice.anisotropic_filtering;
++                    emuenv->cfg.current_config.disable_surface_sync = !advice.surface_sync;
++                    LOG_WARN("iOS thermal state {} -> {}: res x{:.2f} high_accuracy={} aniso={} async={}",
++                        vita3k_ios::ThermalThrottleManager::state_name(last_thermal),
++                        vita3k_ios::ThermalThrottleManager::state_name(sample.thermal),
++                        advice.resolution_multiplier, advice.high_accuracy,
++                        advice.anisotropic_filtering, advice.async_pipeline_compilation);
++                    last_thermal = sample.thermal;
++                }
++
++                if (sample.memory_pressure >= 85)
++                    vita3k_ios::MemoryMonitor::request_gc();
+             }
+ 
+             if (next_scheduled_dump < std::size(scheduled_dump_at_ms)
