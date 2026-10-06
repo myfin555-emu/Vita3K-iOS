@@ -148,6 +148,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO
 
+      - name: Normalize appliance bundle for IPA packager
+        run: |
+          app="build-ios/ios/Release-iphoneos/GodEaterResurrection.app"
+          if [ -d "$app" ]; then
+            mv "$app/GodEaterResurrection" "$app/Vita3K-iOS"
+            mv "$app" "build-ios/ios/Release-iphoneos/Vita3K-iOS.app"
+          fi
+
       - name: Package and verify unsigned IPA
         id: package
         run: |
