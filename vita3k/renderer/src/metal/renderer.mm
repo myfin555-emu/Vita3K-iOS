@@ -258,9 +258,9 @@ bool MetalTextureCache::init(const std::string_view game_id) {
     return TextureCache::init(true, state.texture_folder(), game_id, TextureCacheSize);
 }
 
-void MetalTextureCache::select(size_t index, const SceGxmTexture &texture) {
-    TextureCache::current_info = nullptr;
-    TextureCache::select(index, texture);
+void MetalTextureCache::select(size_t, const SceGxmTexture &) {
+    // TextureCache::cache_and_bind_texture() has already selected current_info.
+    // Metal resources are addressed by that cache index.
 }
 
 void MetalTextureCache::configure_texture(const SceGxmTexture &texture) {
