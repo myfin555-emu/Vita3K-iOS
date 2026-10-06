@@ -25,6 +25,7 @@
 #include <renderer/gl/state.h>
 #include <renderer/vulkan/functions.h>
 #include <renderer/vulkan/state.h>
+#include <renderer/metal/state.h>
 
 #include <gxm/functions.h>
 #include <renderer/functions.h>
@@ -63,6 +64,11 @@ COMMAND(handle_create_context) {
 
     case Backend::Vulkan: {
         result = vulkan::create(dynamic_cast<vulkan::VKState &>(renderer), *ctx, mem);
+        break;
+    }
+
+    case Backend::Metal: {
+        result = metal::create(dynamic_cast<metal::MetalState &>(renderer), *ctx, mem);
         break;
     }
 
@@ -111,6 +117,10 @@ COMMAND(handle_create_render_target) {
         result = vulkan::create(dynamic_cast<vulkan::VKState &>(renderer), *render_target, *params, features);
         break;
 
+    case Backend::Metal:
+        result = metal::create(dynamic_cast<metal::MetalState &>(renderer), *render_target, *params);
+        break;
+
     default:
         REPORT_MISSING(renderer.current_backend);
         break;
@@ -142,6 +152,10 @@ COMMAND(handle_destroy_render_target) {
         vulkan::destroy(dynamic_cast<vulkan::VKState &>(renderer), *render_target);
         break;
 
+    case Backend::Metal:
+        metal::destroy(dynamic_cast<metal::MetalState &>(renderer), *render_target);
+        break;
+
     default:
         REPORT_MISSING(renderer.current_backend);
         break;
@@ -159,6 +173,8 @@ COMMAND(handle_memory_map) {
 
     if (renderer.current_backend == Backend::Vulkan) {
         dynamic_cast<vulkan::VKState &>(renderer).map_memory(mem, addr, size);
+    } else if (renderer.current_backend == Backend::Metal) {
+        dynamic_cast<metal::MetalState &>(renderer).map_memory(mem, addr, size);
     }
 
     complete_command(renderer, helper, 0);
@@ -171,6 +187,8 @@ COMMAND(handle_memory_unmap) {
 
     if (renderer.current_backend == Backend::Vulkan) {
         dynamic_cast<vulkan::VKState &>(renderer).unmap_memory(mem, addr);
+    } else if (renderer.current_backend == Backend::Metal) {
+        dynamic_cast<metal::MetalState &>(renderer).unmap_memory(mem, addr);
     }
 
     complete_command(renderer, helper, 0);
@@ -185,6 +203,11 @@ bool create(std::unique_ptr<FragmentProgram> &fp, State &state, const SceGxmProg
 
     case Backend::Vulkan:
         vulkan::create(fp, dynamic_cast<vulkan::VKState &>(state), program, blend);
+        break;
+
+    case Backend::Metal:
+        if (!metal::create(fp, dynamic_cast<metal::MetalState &>(state), program, blend))
+            return false;
         break;
 
     default:
@@ -212,6 +235,11 @@ bool create(std::unique_ptr<VertexProgram> &vp, State &state, const SceGxmProgra
 
     case Backend::Vulkan:
         vulkan::create(vp, dynamic_cast<vulkan::VKState &>(state), program);
+        break;
+
+    case Backend::Metal:
+        if (!metal::create(vp, dynamic_cast<metal::MetalState &>(state), program, attributes))
+            return false;
         break;
 
     default:
@@ -268,6 +296,14 @@ bool init(FrameHost &frame, std::unique_ptr<State> &state, Backend backend, cons
         state->frame = &frame;
         state->init_paths(root_paths);
         if (!vulkan::create(state, config))
+            return false;
+        break;
+
+    case Backend::Metal:
+        state = std::make_unique<metal::MetalState>();
+        state->frame = &frame;
+        state->init_paths(root_paths);
+        if (!state->init())
             return false;
         break;
 
