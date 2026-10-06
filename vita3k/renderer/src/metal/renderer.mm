@@ -457,8 +457,9 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
 
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = render_target->color;
-    pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+    pass.colorAttachments[0].loadAction = first_render_pass ? MTLLoadActionClear : MTLLoadActionLoad;
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
     pass.depthAttachment.texture = render_target->depth;
     pass.depthAttachment.loadAction = first_render_pass && !record.depth_stencil_surface.force_load ? MTLLoadActionClear : MTLLoadActionLoad;
     pass.depthAttachment.storeAction = MTLStoreActionStore;
