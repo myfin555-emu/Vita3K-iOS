@@ -23,8 +23,12 @@
 
 #include <renderer/gl/functions.h>
 #include <renderer/gl/state.h>
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/functions.h>
+#endif
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/state.h>
+#endif
 #include <renderer/metal/state.h>
 
 #include <gxm/functions.h>
@@ -63,7 +67,9 @@ COMMAND(handle_create_context) {
     }
 
     case Backend::Vulkan: {
+#ifndef VITA3K_IOS_GER_ONLY
         result = vulkan::create(dynamic_cast<vulkan::VKState &>(renderer), *ctx, mem);
+#endif
         break;
     }
 
@@ -114,7 +120,9 @@ COMMAND(handle_create_render_target) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         result = vulkan::create(dynamic_cast<vulkan::VKState &>(renderer), *render_target, *params, features);
+#endif
         break;
 
     case Backend::Metal:
@@ -149,7 +157,9 @@ COMMAND(handle_destroy_render_target) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::destroy(dynamic_cast<vulkan::VKState &>(renderer), *render_target);
+#endif
         break;
 
     case Backend::Metal:
@@ -172,7 +182,9 @@ COMMAND(handle_memory_map) {
     const uint32_t size = helper.pop<uint32_t>();
 
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         dynamic_cast<vulkan::VKState &>(renderer).map_memory(mem, addr, size);
+#endif
     } else if (renderer.current_backend == Backend::Metal) {
         dynamic_cast<metal::MetalState &>(renderer).map_memory(mem, addr, size);
     }
@@ -186,7 +198,9 @@ COMMAND(handle_memory_unmap) {
     const Ptr<void> addr = helper.pop<Ptr<void>>();
 
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         dynamic_cast<vulkan::VKState &>(renderer).unmap_memory(mem, addr);
+#endif
     } else if (renderer.current_backend == Backend::Metal) {
         dynamic_cast<metal::MetalState &>(renderer).unmap_memory(mem, addr);
     }
@@ -202,7 +216,9 @@ bool create(std::unique_ptr<FragmentProgram> &fp, State &state, const SceGxmProg
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::create(fp, dynamic_cast<vulkan::VKState &>(state), program, blend);
+#endif
         break;
 
     case Backend::Metal:
@@ -234,7 +250,9 @@ bool create(std::unique_ptr<VertexProgram> &vp, State &state, const SceGxmProgra
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::create(vp, dynamic_cast<vulkan::VKState &>(state), program);
+#endif
         break;
 
     case Backend::Metal:
@@ -292,11 +310,15 @@ bool init(FrameHost &frame, std::unique_ptr<State> &state, Backend backend, cons
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         state = std::make_unique<vulkan::VKState>(config.current_config.gpu_idx);
+#endif
         state->frame = &frame;
         state->init_paths(root_paths);
+#ifndef VITA3K_IOS_GER_ONLY
         if (!vulkan::create(state, config))
             return false;
+#endif
         break;
 
     case Backend::Metal:
