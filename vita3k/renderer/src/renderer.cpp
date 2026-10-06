@@ -29,6 +29,7 @@
 #include <renderer/gl/state.h>
 #include <renderer/gl/types.h>
 #include <renderer/vulkan/functions.h>
+#include <renderer/metal/state.h>
 
 #include <gxm/functions.h>
 #include <util/log.h>
@@ -279,6 +280,10 @@ void destroy_render_target_during_shutdown(State &state, std::unique_ptr<RenderT
 
     case Backend::Vulkan:
         vulkan::destroy(dynamic_cast<vulkan::VKState &>(state), rt);
+        break;
+
+    case Backend::Metal:
+        metal::destroy(dynamic_cast<metal::MetalState &>(state), rt);
         break;
     }
 
