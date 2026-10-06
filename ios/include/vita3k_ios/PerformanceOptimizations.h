@@ -1,131 +1,154 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <stdexcept>
 #include <thread>
-#include <chrono>
 
 namespace vita3k_ios {
 
 /**
- * @brief Frame rate limiter for stable 60 FPS emulation
- *
- * Critical for games like God Eater Resurrection that are sensitive to frame timing.
- * MoltenVK can have variable frame times; this ensures consistency.
+ * Frame-rate limiter tuned for MoltenVK's variable present times.
+ * Uses a monotonic clock and residual nanosleep so late frames do not
+ * cascade into multi-frame sleep debt (a common source of micro-stutter).
  */
 class FrameRateLimiter {
 public:
     explicit FrameRateLimiter(int target_fps = 60)
-        : target_fps_(target_fps),
-          frame_budget_us_(frame_budget(target_fps)),
-          last_frame_time_(std::chrono::steady_clock::now()) {
+        : target_fps_(target_fps)
+        , frame_budget_ns_(frame_budget_ns(target_fps))
+        , next_deadline_(std::chrono::steady_clock::now()) {
     }
 
-    /**
-     * @brief Throttle to maintain target FPS
-     * Should be called at end of each emulation frame
-     */
+    /** Call once per presented frame. Sleeps only the remaining budget. */
     void throttle() {
-        auto now = std::chrono::steady_clock::now();
-        auto frame_time = std::chrono::duration_cast<std::chrono::microseconds>(
-            now - last_frame_time_
-        ).count();
-
-        if (frame_time < frame_budget_us_) {
-            auto sleep_time = frame_budget_us_ - frame_time;
-            std::this_thread::sleep_for(std::chrono::microseconds(sleep_time));
+        const auto now = std::chrono::steady_clock::now();
+        if (now < next_deadline_) {
+            const auto remaining = next_deadline_ - now;
+            // Spin the last ~0.5 ms for tighter pacing; sleep the rest.
+            constexpr auto spin_threshold = std::chrono::microseconds(500);
+            if (remaining > spin_threshold) {
+                std::this_thread::sleep_for(remaining - spin_threshold);
+            }
+            while (std::chrono::steady_clock::now() < next_deadline_) {
+                // brief spin
+            }
         }
 
-        last_frame_time_ = std::chrono::steady_clock::now();
+        // Advance deadline from the planned slot, not from "now", so a late
+        // frame does not push every subsequent frame later as well.
+        next_deadline_ += std::chrono::nanoseconds(frame_budget_ns_);
+        // If we fell more than 2 frames behind, resync to avoid a long catch-up sleep.
+        const auto behind = std::chrono::steady_clock::now() - next_deadline_;
+        if (behind > std::chrono::nanoseconds(frame_budget_ns_ * 2)) {
+            next_deadline_ = std::chrono::steady_clock::now() + std::chrono::nanoseconds(frame_budget_ns_);
+        }
     }
 
-    /**
-     * @brief Get elapsed time since the last throttle/reset (in microseconds)
-     */
     int64_t get_last_frame_time_us() const {
-        auto now = std::chrono::steady_clock::now();
         return std::chrono::duration_cast<std::chrono::microseconds>(
-            now - last_frame_time_
-        ).count();
+            std::chrono::steady_clock::now() - (next_deadline_ - std::chrono::nanoseconds(frame_budget_ns_))).count();
     }
 
-    /**
-     * @brief Reset frame timing (call on pause/resume)
-     */
     void reset() {
-        last_frame_time_ = std::chrono::steady_clock::now();
+        next_deadline_ = std::chrono::steady_clock::now();
     }
+
+    void set_target_fps(int target_fps) {
+        target_fps_ = target_fps;
+        frame_budget_ns_ = frame_budget_ns(target_fps);
+        reset();
+    }
+
+    int target_fps() const { return target_fps_; }
 
 private:
-    static int64_t frame_budget(int target_fps) {
+    static int64_t frame_budget_ns(int target_fps) {
         if (target_fps <= 0 || target_fps > 1000000)
             throw std::invalid_argument("target_fps must be between 1 and 1000000");
-        return 1000000 / target_fps;
+        return 1'000'000'000LL / target_fps;
     }
 
     int target_fps_;
-    int64_t frame_budget_us_;
-    std::chrono::steady_clock::time_point last_frame_time_;
+    int64_t frame_budget_ns_;
+    std::chrono::steady_clock::time_point next_deadline_;
 };
 
-/**
- * @brief Memory usage monitor for iOS constraints
- *
- * iOS has strict memory limits. This helps detect when emulation
- * is approaching jetsam threshold.
- */
+/** Memory pressure helpers for iOS jetsam avoidance. */
 class MemoryMonitor {
 public:
-    /**
-     * @brief Get current memory pressure level
-     * @return 0-100, where 100 is critical
-     */
+    /** 0–100, where 100 is critical (near jetsam). */
     static int get_memory_pressure();
 
-    /**
-     * @brief Get total resident set size in MB
-     */
+    /** Resident set size in MiB. */
     static uint64_t get_rss_mb();
 
-    /**
-     * @brief Check if approaching jetsam threshold for current device
-     * @return true if memory usage > 85% of available
-     */
+    /** Available bytes before jetsam (0 if unknown). */
+    static uint64_t get_available_bytes();
+
+    /** True when available memory is under ~15% of a typical app budget. */
     static bool is_memory_critical();
 
-    /**
-     * @brief Request garbage collection from emulator
-     * Called when memory pressure is high
-     */
+    /** Hint the runtime to drop non-essential caches (shader/texture soft). */
     static void request_gc();
 };
 
 /**
- * @brief Thermal monitoring for iOS devices
- *
- * Prevents thermal throttling by scaling emulation quality when device gets hot.
+ * Thermal monitoring. When the device heats up we scale quality down so the
+ * OS does not hard-throttle the whole process (which feels like random freezes).
  */
 class ThermalThrottleManager {
 public:
     enum class ThermalState : int {
-        NOMINAL = 0,      // Device is cool, full performance
-        MODERATE = 1,     // Device warming up, reduce settings slightly
-        CRITICAL = 2,     // Device very hot, reduce settings aggressively
+        NOMINAL = 0,
+        FAIR = 1,
+        SERIOUS = 2,
+        CRITICAL = 3,
     };
 
-    /**
-     * @brief Get current device thermal state
-     */
     static ThermalState get_thermal_state();
 
-    /**
-     * @brief Apply thermal throttling adjustments to config
-     * Automatically reduces resolution multiplier, disables high accuracy, etc.
-     *
-     * @param current_thermal Previous thermal state
-     * @param new_thermal Current thermal state
-     */
-    static void apply_thermal_scaling(ThermalState current_thermal, ThermalState new_thermal);
+    struct ScalingAdvice {
+        float resolution_multiplier = 1.0f;
+        bool high_accuracy = true;
+        bool async_pipeline_compilation = true;
+        int anisotropic_filtering = 4;
+        bool surface_sync = true;
+    };
+
+    /** Recommended settings for the given thermal state (starting from baseline). */
+    static ScalingAdvice advice_for(ThermalState state, const ScalingAdvice &baseline);
+
+    /** Human-readable name for logs. */
+    static const char *state_name(ThermalState state);
 };
+
+/**
+ * One-shot recommended defaults for stable first-run behaviour on iPhone/iPad.
+ * Call when building the initial config before a session starts.
+ */
+struct StabilityDefaults {
+    bool async_pipeline_compilation = true;
+    bool cpu_opt = true;
+    bool shader_cache = true;
+    bool texture_cache = true;
+    bool high_accuracy = true;
+    int anisotropic_filtering = 4;
+    float resolution_multiplier = 1.0f;
+    bool v_sync = true;
+    int fps_limit = 60;
+};
+
+StabilityDefaults recommended_stability_defaults();
+
+/** Periodic sample written by the guest watchdog. */
+struct PerfSample {
+    ThermalThrottleManager::ThermalState thermal = ThermalThrottleManager::ThermalState::NOMINAL;
+    int memory_pressure = 0;
+    uint64_t rss_mb = 0;
+    uint64_t available_mb = 0;
+};
+
+PerfSample sample_runtime_pressure();
 
 } // namespace vita3k_ios
