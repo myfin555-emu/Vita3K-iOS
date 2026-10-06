@@ -2351,11 +2351,37 @@ void apply_game_session_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &s
     current.high_accuracy = settings.high_accuracy;
     current.disable_surface_sync = !settings.surface_sync;
     current.memory_mapping = ios_memory_mapping_for(settings);
+
+#ifdef VITA3K_PLATFORM_IOS
+    // A11 profile for God Eater Resurrection. This title is particularly
+    // sensitive to GPU/CPU synchronization on MoltenVK. Keep fast paths
+    // enabled and reduce render-target pixels before spending CPU time on
+    // readback/accuracy work. Covers known Vita region IDs.
+    static constexpr std::array<std::string_view, 4> a11_god_eater_ids = {
+        "PCSG00719", "PCSE00801", "PCSB00874", "PCSH00199"
+    };
+    const bool a11_god_eater = std::find(
+        a11_god_eater_ids.begin(), a11_god_eater_ids.end(), g_current_title_id)
+        != a11_god_eater_ids.end();
+    if (a11_god_eater) {
+        current.resolution_multiplier = std::min(current.resolution_multiplier, 0.75f);
+        current.v_sync = false;
+        current.high_accuracy = false;
+        current.disable_surface_sync = true;
+        current.async_pipeline_compilation = true;
+        current.anisotropic_filtering = std::min(current.anisotropic_filtering, 1);
+        LOG_INFO("iOS A11 GE:R profile: res x{:.2f} vsync={} high_accuracy={} surface_sync={} async={} aniso={}",
+            current.resolution_multiplier, current.v_sync, current.high_accuracy,
+            !current.disable_surface_sync, current.async_pipeline_compilation,
+            current.anisotropic_filtering);
+    }
+#endif
+
     emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
     LOG_INFO("Per-game settings override active: res x{} vsync={} fps=60 cpu_opt={} ngs={} async={} aniso={} high_accuracy={} surface_sync={} double_buffer={}",
-        settings.resolution_multiplier, settings.v_sync, settings.cpu_opt,
-        settings.ngs_enable, settings.async_pipeline_compilation, settings.anisotropic_filtering,
-        settings.high_accuracy, settings.surface_sync, settings.double_buffer);
+        current.resolution_multiplier, current.v_sync, settings.cpu_opt,
+        settings.ngs_enable, current.async_pipeline_compilation, current.anisotropic_filtering,
+        current.high_accuracy, !current.disable_surface_sync, settings.double_buffer);
 }
 
 std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
