@@ -497,22 +497,25 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     frag_info.use_raw_image = 0.0f;
     frag_info.res_multiplier = state.res_multiplier;
 
-    const uint16_t texture_count = std::max<uint16_t>(
-        vp->texture_count, fp->texture_count);
-    const size_t ext_header = align(sizeof(vert_info), 8);
-    const size_t ext_size = ext_header + texture_count * sizeof(float) * 4;
-    std::vector<uint8_t> vert_bytes(ext_size);
-    std::vector<uint8_t> frag_bytes(align(sizeof(frag_info), 8) + texture_count * sizeof(float) * 4);
+    const uint16_t vertex_texture_count = vp->texture_count;
+    const uint16_t fragment_texture_count = fp->texture_count;
+    const size_t vert_header = align(sizeof(vert_info), 8);
+    const size_t frag_header = align(sizeof(frag_info), 8);
+    const size_t vert_size = vert_header + vertex_texture_count * sizeof(float) * 4;
+    const size_t frag_size = frag_header + fragment_texture_count * sizeof(float) * 4;
+    std::vector<uint8_t> vert_bytes(vert_size);
+    std::vector<uint8_t> frag_bytes(frag_size);
     memcpy(vert_bytes.data(), &vert_info, sizeof(vert_info));
     memcpy(frag_bytes.data(), &frag_info, sizeof(frag_info));
-    for (uint16_t i = 0; i < texture_count; ++i) {
-        const float ratio[2] = {1.0f / static_cast<float>(render_target->width), 1.0f / static_cast<float>(render_target->height)};
-        const float offset[2] = {0.0f, 0.0f};
-        memcpy(vert_bytes.data() + ext_header + i * 8, ratio, sizeof(ratio));
-        memcpy(vert_bytes.data() + ext_header + texture_count * 8 + i * 8, offset, sizeof(offset));
-        const size_t frag_header = align(sizeof(frag_info), 8);
+    const float ratio[2] = {1.0f / static_cast<float>(render_target->width), 1.0f / static_cast<float>(render_target->height)};
+    const float offset[2] = {0.0f, 0.0f};
+    for (uint16_t i = 0; i < vertex_texture_count; ++i) {
+        memcpy(vert_bytes.data() + vert_header + i * 8, ratio, sizeof(ratio));
+        memcpy(vert_bytes.data() + vert_header + vertex_texture_count * 8 + i * 8, offset, sizeof(offset));
+    }
+    for (uint16_t i = 0; i < fragment_texture_count; ++i) {
         memcpy(frag_bytes.data() + frag_header + i * 8, ratio, sizeof(ratio));
-        memcpy(frag_bytes.data() + frag_header + texture_count * 8 + i * 8, offset, sizeof(offset));
+        memcpy(frag_bytes.data() + frag_header + fragment_texture_count * 8 + i * 8, offset, sizeof(offset));
     }
 
     auto vert_info_buffer = make_shared_buffer(state.device, vert_bytes.data(), vert_bytes.size());
