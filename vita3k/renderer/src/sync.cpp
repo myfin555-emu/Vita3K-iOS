@@ -119,12 +119,14 @@ COMMAND(new_frame) {
             renderer.should_display = true;
     }
 
+#ifndef VITA3K_IOS_GER_ONLY
     if (renderer.current_backend == Backend::Vulkan) {
         renderer::Context *active_context = helper.pop<renderer::Context *>();
         if (active_context) {
             vulkan::new_frame(*reinterpret_cast<vulkan::VKContext *>(active_context));
         }
     }
+#endif
 }
 
 // Client side function
