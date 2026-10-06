@@ -639,7 +639,12 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
     d.stencilAttachmentPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
     d.vertexDescriptor = [MTLVertexDescriptor vertexDescriptor];
 
+    const auto *gxm_vp = record.vertex_program.get(mem);
     std::array<NSUInteger, SCE_GXM_MAX_VERTEX_STREAMS> strides{};
+    if (gxm_vp) {
+        for (size_t i = 0; i < gxm_vp->streams.size() && i < strides.size(); ++i)
+            strides[i] = gxm_vp->streams[i].stride;
+    }
     for (const auto &a : vp->attributes) {
         const auto info_it = vp->attribute_infos.find(a.regIndex);
         if (info_it == vp->attribute_infos.end()) continue;
@@ -648,7 +653,7 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
         d.vertexDescriptor.attributes[location].format = vertex_format(a.format, a.componentCount);
         d.vertexDescriptor.attributes[location].offset = a.offset;
         d.vertexDescriptor.attributes[location].bufferIndex = 4 + a.streamIndex;
-        strides[a.streamIndex] = std::max(strides[a.streamIndex], a.offset + attribute_size(a.format, a.componentCount));
+        strides[a.streamIndex] = std::max<NSUInteger>(strides[a.streamIndex], a.offset + attribute_size(a.format, a.componentCount));
     }
     for (size_t i = 0; i < strides.size(); ++i)
         d.vertexDescriptor.layouts[4 + i].stride = strides[i] ? strides[i] : 4;
