@@ -25,7 +25,9 @@
 #include <renderer/gl/functions.h>
 #include <renderer/gl/types.h>
 
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/functions.h>
+#endif
 #include <renderer/metal/state.h>
 
 #include <config/state.h>
@@ -85,7 +87,9 @@ COMMAND(handle_set_context) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::set_context(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, reinterpret_cast<vulkan::VKRenderTarget *>(rt), features);
+#endif
         break;
 
     case Backend::Metal:
@@ -132,7 +136,9 @@ COMMAND(handle_sync_surface_data) {
         signal_notifications();
 
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::VKContext *context = reinterpret_cast<vulkan::VKContext *>(render_context);
+#endif
         if (context->is_recording)
             context->stop_recording(vertex_notification, fragment_notification);
     }
@@ -225,7 +231,9 @@ COMMAND(handle_mid_scene_flush) {
 
     const SceGxmNotification notification = helper.pop<SceGxmNotification>();
     if (renderer.current_backend == Backend::Vulkan) {
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::mid_scene_flush(*reinterpret_cast<vulkan::VKContext *>(render_context), notification);
+#endif
     }
 }
 
@@ -244,8 +252,10 @@ COMMAND(handle_draw) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         vulkan::draw(*reinterpret_cast<vulkan::VKContext *>(render_context), type, format, indices.cast<void>(),
             count, instance_count, mem, config);
+#endif
         break;
 
     case Backend::Metal:
