@@ -70,7 +70,9 @@ COMMAND_SET_STATE(region_clip) {
         vulkan::sync_clipping(*static_cast<vulkan::VKContext *>(render_context));
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -260,7 +262,9 @@ COMMAND_SET_STATE(depth_bias) {
             vulkan::sync_depth_bias(*reinterpret_cast<vulkan::VKContext *>(render_context));
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -286,7 +290,9 @@ COMMAND_SET_STATE(depth_func) {
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -311,7 +317,9 @@ COMMAND_SET_STATE(depth_write_enable) {
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -335,7 +343,9 @@ COMMAND_SET_STATE(polygon_mode) {
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -357,7 +367,9 @@ COMMAND_SET_STATE(point_line_width) {
         vulkan::sync_point_line_width(*reinterpret_cast<vulkan::VKContext *>(render_context), is_front);
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -398,7 +410,9 @@ COMMAND_SET_STATE(stencil_func) {
         vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), !is_front);
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -423,7 +437,9 @@ COMMAND_SET_STATE(stencil_ref) {
         vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), !is_front);
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -472,7 +488,9 @@ COMMAND_SET_STATE(two_sided) {
         vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), true);
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
@@ -491,7 +509,9 @@ COMMAND_SET_STATE(cull_mode) {
         vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
         break;
 
-    default:
+    case Backend::Metal:
+        break;
+        default:
         REPORT_MISSING(renderer.current_backend);
         break;
     }
