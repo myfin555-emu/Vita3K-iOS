@@ -403,6 +403,7 @@ MetalContext::~MetalContext() = default;
 
 void MetalContext::set_context(MetalRenderTarget *target) {
     render_target = target;
+    first_render_pass = true;
     record.color_surface.downscale = false;
 }
 
@@ -459,11 +460,11 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.depthAttachment.texture = render_target->depth;
-    pass.depthAttachment.loadAction = record.depth_stencil_surface.force_load ? MTLLoadActionLoad : MTLLoadActionClear;
-    pass.depthAttachment.storeAction = record.depth_stencil_surface.force_load ? MTLStoreActionStore : MTLStoreActionStore;
+    pass.depthAttachment.loadAction = first_render_pass && !record.depth_stencil_surface.force_load ? MTLLoadActionClear : MTLLoadActionLoad;
+    pass.depthAttachment.storeAction = MTLStoreActionStore;
     pass.depthAttachment.clearDepth = record.depth_stencil_surface.background_depth;
     pass.stencilAttachment.texture = render_target->depth;
-    pass.stencilAttachment.loadAction = record.depth_stencil_surface.force_load ? MTLLoadActionLoad : MTLLoadActionClear;
+    pass.stencilAttachment.loadAction = first_render_pass && !record.depth_stencil_surface.force_load ? MTLLoadActionClear : MTLLoadActionLoad;
     pass.stencilAttachment.storeAction = MTLStoreActionStore;
     pass.stencilAttachment.clearStencil = record.depth_stencil_surface.stencil;
 
@@ -579,6 +580,7 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
 
     [enc endEncoding];
     [cmd commit];
+    first_render_pass = false;
 }
 
 id<MTLDepthStencilState> MetalContext::depth_state_for_draw() {
