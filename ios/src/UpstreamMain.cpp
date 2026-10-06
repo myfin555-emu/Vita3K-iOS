@@ -2366,8 +2366,13 @@ void apply_game_session_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &s
     if (a11_god_eater) {
         current.resolution_multiplier = std::min(current.resolution_multiplier, 0.75f);
         current.v_sync = false;
-        current.high_accuracy = false;
-        current.disable_surface_sync = true;
+        // GE:R relies on the accurate framebuffer-fetch path for correct
+        // rendering. Keep High Accuracy enabled; optimize around it instead.
+        current.high_accuracy = true;
+        // Surface sync remains a correctness-sensitive option on iOS. The
+        // renderer already coalesces in-flight readbacks, so don't globally
+        // disable it just to chase an FPS number.
+        current.disable_surface_sync = false;
         current.async_pipeline_compilation = true;
         current.anisotropic_filtering = std::min(current.anisotropic_filtering, 1);
         LOG_INFO("iOS A11 GE:R profile: res x{:.2f} vsync={} high_accuracy={} surface_sync={} async={} aniso={}",
