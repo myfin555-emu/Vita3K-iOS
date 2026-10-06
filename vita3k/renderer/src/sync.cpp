@@ -25,9 +25,11 @@
 #include <display/state.h>
 #include <renderer/gl/functions.h>
 #include <renderer/gl/state.h>
+#ifndef VITA3K_IOS_GER_ONLY
 #include <renderer/vulkan/functions.h>
 #include <renderer/vulkan/state.h>
 #include <renderer/vulkan/types.h>
+#endif
 
 #include <renderer/functions.h>
 #include <util/tracy.h>
@@ -46,11 +48,17 @@ COMMAND(handle_signal_sync_object) {
     const uint32_t timestamp = helper.pop<uint32_t>();
 
     if (features.can_surface_sync() && config.current_config.high_accuracy) {
-        assert(renderer.current_backend == renderer::Backend::Vulkan);
-        vulkan::signal_sync_object(dynamic_cast<vulkan::VKState &>(renderer), sync, timestamp);
-    } else {
-        renderer::subject_done(sync, timestamp);
+#ifndef VITA3K_IOS_GER_ONLY
+        if (renderer.current_backend == renderer::Backend::Vulkan) {
+            vulkan::signal_sync_object(dynamic_cast<vulkan::VKState &>(renderer), sync, timestamp);
+            return;
+        }
+#endif
+        // Native Metal does not use Vulkan's queue/timestamp tracking.
+        // Surface synchronization is completed by MetalContext::sync_surface,
+        // so ordinary GXM sync objects use the common CPU-side completion path.
     }
+    renderer::subject_done(sync, timestamp);
 }
 
 COMMAND(handle_wait_sync_object) {
@@ -84,7 +92,12 @@ COMMAND(handle_set_screen_filter) {
         break;
 
     case Backend::Vulkan:
+#ifndef VITA3K_IOS_GER_ONLY
         dynamic_cast<vulkan::VKState &>(renderer).screen_renderer.set_filter(*filter);
+#endif
+        break;
+    case Backend::Metal:
+        renderer.set_screen_filter(*filter);
         break;
     }
 }
@@ -125,6 +138,7 @@ void finish(State &state, Context *context) {
 
     // Wait for the VK wait thread to finish processing all pending requests.
     // Push a callback request on the queue and wait for it to be treated
+#ifndef VITA3K_IOS_GER_ONLY
     if (state.current_backend == Backend::Vulkan
         && (state.features.enable_memory_mapping || state.features.support_unmapped_surface_sync)) {
         auto &vk_state = static_cast<vulkan::VKState &>(state);
@@ -135,6 +149,7 @@ void finish(State &state, Context *context) {
         vk_state.request_queue.push(vulkan::CallbackRequest{ new vulkan::CallbackRequestFunction(callback) });
         promise.get_future().wait();
     }
+#endif
 }
 
 int wait_for_status(State &state, int *status, int signal, bool wake_on_equal) {
