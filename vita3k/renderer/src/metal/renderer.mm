@@ -1027,6 +1027,16 @@ void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNo
         for (size_t y = 0; y < height; ++y)
             memcpy(dst + y * stride * 4, pixels.data() + y * width * 4, width * 4);
     }
+
+    {
+        std::unique_lock<std::mutex> lock(state.notification_mutex);
+        if (vertex.address)
+            *vertex.address.get(mem) = vertex.value;
+        if (fragment.address)
+            *fragment.address.get(mem) = fragment.value;
+        lock.unlock();
+        state.notification_ready.notify_all();
+    }
 }
 
 } // namespace renderer::metal
