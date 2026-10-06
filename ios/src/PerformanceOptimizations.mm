@@ -7,6 +7,7 @@
 
 #include <util/log.h>
 
+#include <algorithm>
 #include <atomic>
 #include <mach/mach.h>
 #include <os/proc.h>
