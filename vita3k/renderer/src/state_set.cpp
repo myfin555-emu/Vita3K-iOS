@@ -26,6 +26,7 @@
 #include <renderer/gl/types.h>
 
 #include <renderer/vulkan/functions.h>
+#include <renderer/metal/state.h>
 #include <renderer/vulkan/state.h>
 #include <renderer/vulkan/types.h>
 
@@ -126,6 +127,10 @@ COMMAND_SET_STATE(uniform_buffer) {
 
     case Backend::Vulkan:
         vulkan::set_uniform_buffer(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, program, is_vertex, block_num, size, data);
+        break;
+
+    case Backend::Metal:
+        reinterpret_cast<metal::MetalContext *>(render_context)->set_uniform(is_vertex, block_num, size, data.cast<const void>());
         break;
 
     default:
@@ -435,6 +440,10 @@ COMMAND_SET_STATE(texture) {
     case Backend::Vulkan:
         vulkan::sync_texture(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, texture_index, texture,
             config);
+        break;
+
+    case Backend::Metal:
+        metal::sync_texture(*reinterpret_cast<metal::MetalContext *>(render_context), mem, texture_index, texture, config);
         break;
 
     default:
