@@ -84,7 +84,10 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_METAL_FOUNDATION)
     target_sources(renderer PRIVATE src/metal/renderer.mm)
     target_include_directories(renderer PRIVATE include)
     target_link_libraries(renderer PRIVATE spirv-cross-msl "-framework Metal" "-framework QuartzCore")
-    target_compile_definitions(renderer PRIVATE VITA3K_IOS_GER_METAL_FOUNDATION=1)
+    target_compile_definitions(renderer PRIVATE
+        VITA3K_IOS_GER_METAL_FOUNDATION=1
+        VITA3K_IOS_GER_ONLY=1
+    )
 endif()
 
 if(APPLE AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
