@@ -314,9 +314,7 @@ public:
     }
 
     renderer::DisplayHandle handle() const override {
-        // The Vulkan screen renderer creates the surface for this handle
-        // through SDL_Vulkan_CreateSurface, which works on iOS as well.
-        return renderer::AndroidDisplayHandle{ m_window };
+        return renderer::SDLDisplayHandle{ m_window };
     }
 
     int drawable_width() const override {
@@ -3093,10 +3091,9 @@ int main(int argc, char *argv[]) {
                 LOG_INFO("iOS window resized: drawable={}x{} layout={}",
                     drawable_width, drawable_height,
                     drawable_height > drawable_width ? "portrait" : "landscape");
-                // MoltenVK does not reliably report the swapchain as
-                // out-of-date after a rotation; it scales the stale-extent
-                // swapchain to the layer instead (nearest-filtered, visibly
-                // pixelated). Force a rebuild at the new drawable size.
+                // Rebuild the renderer's presentation resources at the new
+                // drawable size. The Metal backend updates its CAMetalLayer
+                // directly; the Vulkan backend retains its own swapchain path.
                 if (emuenv->renderer)
                     emuenv->renderer->request_screen_rebuild();
                 break;
