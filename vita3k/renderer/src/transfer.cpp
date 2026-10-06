@@ -214,7 +214,7 @@ COMMAND(handle_transfer_downscale) {
     dst->address = (dst->address.cast<uint8_t>() + dst->y * dst->stride + dst->x * pixel_bytes).cast<void>();
 
     // only rgb formats are supported by the PS Vita for downscaling
-    vulkan::CallbackRequestFunction downscale_operation = [&mem, src, dst]() {
+    std::function<void()> downscale_operation = [&mem, src, dst]() {
         AVPixelFormat pixel_fmt = AV_PIX_FMT_NONE;
         switch (src->format) {
         case SCE_GXM_TRANSFER_FORMAT_U5U6U5_BGR:
