@@ -1,15 +1,17 @@
 #import <MetalKit/MetalKit.h>
 #import <UIKit/UIKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import <vita3k_ios/GERNativeRenderer.h>
 
 #include <vita3k_ios/GERNativeRuntime.h>
 
-@interface GERNativeViewController : UIViewController
+@interface GERNativeViewController : UIViewController <UIDocumentPickerDelegate>
 @property(nonatomic, strong) MTKView *metalView;
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UILabel *detailsLabel;
+@property(nonatomic, strong) UIButton *importButton;
 @property(nonatomic, strong) UIButton *settingsButton;
 @property(nonatomic, strong) GERNativeRenderer *renderer;
 @end
@@ -23,6 +25,24 @@
     self.view.backgroundColor = UIColor.blackColor;
 }
 
+- (void)refreshGameStatus {
+    const auto status = _runtime.scan();
+
+    self.statusLabel.text = [NSString stringWithUTF8String:status.message.c_str()];
+
+    if (!status.game.root.empty()) {
+        self.detailsLabel.text = [NSString stringWithFormat:
+            @"Title ID: %s\nInstall: %s\nparam.sfo: %@    executable: %@\n\nNative runtime: Metal / ARM64\nNo Vita CPU or GXM emulator is linked.",
+            status.game.title_id.c_str(),
+            status.game.root.string().c_str(),
+            status.game.has_param_sfo ? @"OK" : @"MISSING",
+            status.game.has_eboot ? @"FOUND" : @"MISSING"];
+    } else {
+        self.detailsLabel.text =
+            @"Title ID: PCSE00801\nSelect the GE:R game folder in Files and import it into this app.\n\nNative runtime: Metal / ARM64";
+    }
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
 
@@ -30,11 +50,10 @@
     if (!device) {
         self.titleLabel = [[UILabel alloc] init];
         self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        self.titleLabel.text = @"GOD EATER RESURRECTION";
+        self.titleLabel.text = @"GOD EATER RESURRECTION\n\nMetal is not available on this device.";
         self.titleLabel.textColor = UIColor.whiteColor;
         self.titleLabel.textAlignment = NSTextAlignmentCenter;
         self.titleLabel.numberOfLines = 0;
-        self.titleLabel.text = @"GOD EATER RESURRECTION\n\nMetal is not available on this device.";
         [self.view addSubview:self.titleLabel];
         [NSLayoutConstraint activateConstraints:@[
             [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:24.0],
@@ -64,6 +83,7 @@
     self.titleLabel.textColor = UIColor.whiteColor;
     self.titleLabel.font = [UIFont systemFontOfSize:22.0 weight:UIFontWeightBold];
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
+    self.titleLabel.numberOfLines = 0;
 
     self.statusLabel = [[UILabel alloc] init];
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -79,6 +99,12 @@
     self.detailsLabel.numberOfLines = 0;
     self.detailsLabel.textAlignment = NSTextAlignmentLeft;
 
+    self.importButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.importButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.importButton setTitle:@"Import GE:R Game Folder" forState:UIControlStateNormal];
+    self.importButton.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
+    [self.importButton addTarget:self action:@selector(importGameFolder) forControlEvents:UIControlEventTouchUpInside];
+
     self.settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.settingsButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.settingsButton setTitle:@"Settings" forState:UIControlStateNormal];
@@ -88,6 +114,7 @@
     [panel addSubview:self.titleLabel];
     [panel addSubview:self.statusLabel];
     [panel addSubview:self.detailsLabel];
+    [panel addSubview:self.importButton];
     [panel addSubview:self.settingsButton];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -95,37 +122,34 @@
         [self.metalView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.metalView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.metalView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+
         [panel.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:20.0],
         [panel.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-20.0],
         [panel.centerYAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.centerYAnchor],
+        [panel.topAnchor constraintGreaterThanOrEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:20.0],
+        [panel.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-20.0],
+
         [self.titleLabel.topAnchor constraintEqualToAnchor:panel.topAnchor constant:24.0],
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:18.0],
         [self.titleLabel.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-18.0],
+
         [self.statusLabel.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:18.0],
         [self.statusLabel.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:18.0],
         [self.statusLabel.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-18.0],
+
         [self.detailsLabel.topAnchor constraintEqualToAnchor:self.statusLabel.bottomAnchor constant:16.0],
         [self.detailsLabel.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:22.0],
         [self.detailsLabel.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-22.0],
-        [self.settingsButton.topAnchor constraintEqualToAnchor:self.detailsLabel.bottomAnchor constant:18.0],
+
+        [self.importButton.topAnchor constraintEqualToAnchor:self.detailsLabel.bottomAnchor constant:20.0],
+        [self.importButton.centerXAnchor constraintEqualToAnchor:panel.centerXAnchor],
+
+        [self.settingsButton.topAnchor constraintEqualToAnchor:self.importButton.bottomAnchor constant:12.0],
         [self.settingsButton.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-20.0],
         [self.settingsButton.centerXAnchor constraintEqualToAnchor:panel.centerXAnchor]
     ]];
 
-    const auto status = _runtime.scan();
-    self.statusLabel.text = [NSString stringWithUTF8String:status.message.c_str()];
-
-    if (!status.game.root.empty()) {
-        self.detailsLabel.text = [NSString stringWithFormat:
-            @"Title ID: %s\nInstall: %s\nparam.sfo: %@    executable: %@\n\nNative runtime: Metal / ARM64\nNo Vita CPU or GXM emulator is linked.",
-            status.game.title_id.c_str(),
-            status.game.root.string().c_str(),
-            status.game.has_param_sfo ? @"OK" : @"MISSING",
-            status.game.has_eboot ? @"FOUND" : @"MISSING"];
-    } else {
-        self.detailsLabel.text =
-            @"Title ID: PCSE00801\nGame files are loaded from the user's install directory.\n\nNative runtime: Metal / ARM64";
-    }
+    [self refreshGameStatus];
 
     self.navigationItem.title = @"GER Native 1.0";
 }
@@ -140,10 +164,113 @@
     [self.renderer start];
 }
 
+- (void)importGameFolder {
+    UIDocumentPickerViewController *picker =
+        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTType.folder]
+                                                                  asCopy:NO];
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (NSURL *)findGameFolderInSelectedURL:(NSURL *)url {
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    if ([[url.lastPathComponent uppercaseString] isEqualToString:@"PCSE00801"])
+        return url;
+
+    NSURL *direct = [url URLByAppendingPathComponent:@"PCSE00801" isDirectory:YES];
+    if ([fm fileExistsAtPath:direct.path isDirectory:nil])
+        return direct;
+
+    NSURL *vitaApp = [url URLByAppendingPathComponent:@"app/PCSE00801" isDirectory:YES];
+    if ([fm fileExistsAtPath:vitaApp.path isDirectory:nil])
+        return vitaApp;
+
+    return nil;
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller
+ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    (void)controller;
+
+    NSURL *selectedURL = urls.firstObject;
+    if (!selectedURL)
+        return;
+
+    BOOL scoped = [selectedURL startAccessingSecurityScopedResource];
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    @try {
+        NSURL *gameURL = [self findGameFolderInSelectedURL:selectedURL];
+        if (!gameURL) {
+            [self showImportError:@"ไม่พบโฟลเดอร์ PCSE00801\n\nให้เลือกโฟลเดอร์เกม PCSE00801 โดยตรง หรือเลือกโฟลเดอร์ vita ที่มี app/PCSE00801 อยู่ข้างใน."];
+            return;
+        }
+
+        NSString *documents = NSSearchPathForDirectoriesInDomains(
+            NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+        NSURL *destination = [NSURL fileURLWithPath:documents isDirectory:YES];
+        destination = [destination URLByAppendingPathComponent:@"PCSE00801" isDirectory:YES];
+
+        if ([fm fileExistsAtPath:destination.path]) {
+            UIAlertController *confirm = [UIAlertController
+                alertControllerWithTitle:@"GE:R is already imported"
+                                 message:@"Replace the existing PCSE00801 game folder with the selected folder?"
+                          preferredStyle:UIAlertControllerStyleAlert];
+
+            [confirm addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                        style:UIAlertActionStyleCancel
+                                                      handler:nil]];
+            [confirm addAction:[UIAlertAction actionWithTitle:@"Replace"
+                                                        style:UIAlertActionStyleDestructive
+                                                      handler:^(__unused UIAlertAction *action) {
+                NSError *error = nil;
+                [fm removeItemAtURL:destination error:&error];
+                if (error || ![fm copyItemAtURL:gameURL toURL:destination error:&error]) {
+                    [self showImportError:error.localizedDescription ?: @"Could not import the GE:R game folder."];
+                    return;
+                }
+                [self refreshGameStatus];
+            }]];
+            [self presentViewController:confirm animated:YES completion:nil];
+            return;
+        }
+
+        NSError *error = nil;
+        if (![fm copyItemAtURL:gameURL toURL:destination error:&error]) {
+            [self showImportError:error.localizedDescription ?: @"Could not import the GE:R game folder."];
+            return;
+        }
+
+        [self refreshGameStatus];
+
+        UIAlertController *done = [UIAlertController
+            alertControllerWithTitle:@"GE:R imported"
+                             message:@"The game folder was copied into GER Native/Documents/PCSE00801. The native runtime can now inspect it."
+                      preferredStyle:UIAlertControllerStyleAlert];
+        [done addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:done animated:YES completion:nil];
+    }
+    @finally {
+        if (scoped)
+            [selectedURL stopAccessingSecurityScopedResource];
+    }
+}
+
+- (void)showImportError:(NSString *)message {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"GE:R import failed"
+                         message:message
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)showSettings {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"GER Native Settings"
-                         message:@"Version 1.0.0\n\nRenderer: Native Metal\nRuntime: Native GE:R foundation\nEmulator core: disabled\nGame data: external install only\n\nGame execution and recovered GE:R systems will be added to this runtime as they are implemented."
+                         message:@"Version 1.0.0\n\nRenderer: Native Metal\nRuntime: Native GE:R foundation\nEmulator core: disabled\nGame data: external install only\n\nImport Game Folder copies the user's PCSE00801 directory into this app's Documents container.\n\nGame execution and recovered GE:R systems will be added to this runtime as they are implemented."
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
