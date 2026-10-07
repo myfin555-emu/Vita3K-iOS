@@ -97,7 +97,7 @@ bool starts_with(const std::vector<std::uint8_t> &data, std::initializer_list<st
     return true;
 }
 
-void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_offset, ExecutableReport &report) {
+void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_offset, ExecutableReport &report, std::size_t self_phdr_offset = std::string::npos, std::size_t self_segment_info_offset = std::string::npos) {
     const auto available = [&]() -> std::size_t {
         return elf_offset <= data.size() ? data.size() - elf_offset : 0;
     };
@@ -143,16 +143,22 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
     };
     std::vector<ProgramHeader> programs;
 
-    // Program headers are authoritative for loading even when a release ELF has
-    // no section table. Parse them independently from sections.
+    // Vita SELF keeps the ELF header, program-header table, and segment
+    // descriptors at SELF-header-specified offsets. e_phoff is retained in the
+    // ELF header for compatibility but is not the raw SELF location of the
+    // program-header table.
+    const std::size_t phdr_base = self_phdr_offset != std::string::npos
+        ? self_phdr_offset
+        : (elf_offset + phoff);
+
     if (phnum != 0 && phentsize >= 0x20) {
-        const std::uint64_t ph_end = static_cast<std::uint64_t>(phoff) +
+        const std::uint64_t ph_end = static_cast<std::uint64_t>(phdr_base) +
             static_cast<std::uint64_t>(phnum) * phentsize;
-        if (phoff < available() && ph_end <= available()) {
+        if (phdr_base <= data.size() && ph_end <= data.size()) {
             std::ostringstream ph;
             std::size_t valid = 0;
             for (std::uint16_t i = 0; i < phnum; ++i) {
-                const auto *p = e + static_cast<std::uint64_t>(phoff) +
+                const auto *p = data.data() + static_cast<std::uint64_t>(phdr_base) +
                     static_cast<std::uint64_t>(i) * phentsize;
                 ProgramHeader x;
                 x.type = u32le(p + 0x00);
@@ -178,7 +184,25 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                    << " flags=" << hex_u64(x.flags, 2)
                    << " perm=" << perm
                    << " align=" << hex_u64(x.align, 8)
-                   << " range=" << (file_range_ok ? "valid" : "INVALID") << "\n";
+                   << " range=" << (file_range_ok ? "valid" : "INVALID");
+                if (self_segment_info_offset != std::string::npos) {
+                    const std::uint64_t si = static_cast<std::uint64_t>(self_segment_info_offset) +
+                        static_cast<std::uint64_t>(i) * 32;
+                    if (si + 32 <= data.size()) {
+                        const auto *s = data.data() + si;
+                        const auto raw_offset = u64le(s);
+                        const auto raw_size = u64le(s + 8);
+                        const auto compressed = u32le(s + 16);
+                        const auto plaintext = u32le(s + 24);
+                        const bool raw_ok = raw_offset <= data.size() && raw_size <= data.size() - raw_offset;
+                        ph << " selfOffset=" << hex_u64(raw_offset, 8)
+                           << " selfSize=" << hex_u64(raw_size, 8)
+                           << " compressed=" << compressed
+                           << " plaintext=" << plaintext
+                           << " selfRange=" << (raw_ok ? "valid" : "INVALID");
+                    }
+                }
+                ph << "\n";
                 ++valid;
             }
             report.program_header_details = ph.str();
@@ -195,14 +219,32 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
     // stripped Vita ELF because dynamic/symbol information can survive only as
     // loadable segments after section headers are removed.
     const auto va_to_file = [&](std::uint32_t va, std::uint32_t size = 1) -> std::size_t {
-        for (const auto &p : programs) {
+        for (std::size_t index = 0; index < programs.size(); ++index) {
+            const auto &p = programs[index];
             if (p.type != 1 || va < p.vaddr)
                 continue;
+            // For a raw Vita SELF, p_offset addresses the extracted ELF image,
+            // while SegmentInfo gives the corresponding raw SELF byte range.
+            // Use the segment descriptor when available instead of pretending
+            // p_offset is a direct offset into eboot.bin.
             const std::uint64_t delta = static_cast<std::uint64_t>(va) - p.vaddr;
             if (delta <= p.filesz &&
-                static_cast<std::uint64_t>(size) <= static_cast<std::uint64_t>(p.filesz) - delta &&
-                static_cast<std::uint64_t>(p.file_offset) + delta + size <= available())
-                return static_cast<std::size_t>(p.file_offset + delta);
+                static_cast<std::uint64_t>(size) <= static_cast<std::uint64_t>(p.filesz) - delta) {
+                if (self_segment_info_offset != std::string::npos) {
+                    const std::uint64_t si = static_cast<std::uint64_t>(self_segment_info_offset) +
+                        static_cast<std::uint64_t>(index) * 32;
+                    if (si + 32 <= data.size()) {
+                        const std::uint64_t raw_offset = u64le(data.data() + si);
+                        const std::uint64_t raw_size = u64le(data.data() + si + 8);
+                        if (raw_offset <= data.size() &&
+                            raw_size >= delta + size &&
+                            raw_size <= data.size() - raw_offset)
+                            return static_cast<std::size_t>(raw_offset + delta);
+                    }
+                }
+                if (static_cast<std::uint64_t>(p.file_offset) + delta + size <= available())
+                    return static_cast<std::size_t>(p.file_offset + delta);
+            }
         }
         return std::string::npos;
     };
@@ -561,6 +603,39 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
         const auto it = std::search(begin, data.end(), elf_magic.begin(), elf_magic.end());
         if (it != data.end())
             elf_offset = static_cast<std::size_t>(std::distance(data.begin(), it));
+    }
+
+    std::size_t self_phdr_offset = std::string::npos;
+    std::size_t self_segment_info_offset = std::string::npos;
+    if (is_self && data.size() >= 32 + 88) {
+        const auto *sh = data.data() + 32;
+        const std::uint64_t file_length = u64le(sh + 0);
+        const std::uint64_t appinfo_offset = u64le(sh + 24);
+        const std::uint64_t self_elf_offset = u64le(sh + 32);
+        const std::uint64_t self_phdr = u64le(sh + 40);
+        const std::uint64_t segment_info = u64le(sh + 56);
+        const std::uint64_t control_info = u64le(sh + 72);
+        const bool offsets_ok =
+            self_elf_offset < data.size() &&
+            self_phdr <= data.size() &&
+            segment_info <= data.size();
+        if (offsets_ok) {
+            elf_offset = static_cast<std::size_t>(self_elf_offset);
+            self_phdr_offset = static_cast<std::size_t>(self_phdr);
+            self_segment_info_offset = static_cast<std::size_t>(segment_info);
+            report.self_info =
+                "SELF header: fileLength=" + hex_u64(file_length, 16) +
+                " appInfo=" + hex_u64(appinfo_offset, 8) +
+                " elfOffset=" + hex_u64(self_elf_offset, 8) +
+                " phdrOffset=" + hex_u64(self_phdr, 8) +
+                " segmentInfoOffset=" + hex_u64(segment_info, 8) +
+                " controlInfoOffset=" + hex_u64(control_info, 8);
+            NativeLogger::write("analyzer: SELF offsets elf=" + hex_u64(self_elf_offset, 8) +
+                                " phdr=" + hex_u64(self_phdr, 8) +
+                                " segmentInfo=" + hex_u64(segment_info, 8));
+        } else {
+            NativeLogger::write("analyzer: SELF header offsets invalid; falling back to ELF magic scan");
+        }
     }
 
     if (elf_offset != std::string::npos) {
