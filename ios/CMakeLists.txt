@@ -14,11 +14,6 @@ if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE AND NO
     message(FATAL_ERROR "VITA3K_IOS_GER_METAL_FOUNDATION requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON unless the native GE:R target is selected.")
 endif()
 
-if(NOT VITA3K_IOS_LINK_CORE)
-    message(FATAL_ERROR
-        "Bootstrap-only builds are no longer supported. Set VITA3K_IOS_LINK_CORE=ON.")
-endif()
-
 if(VITA3K_IOS_GER_ONLY)
     add_executable(Vita3KiOS MACOSX_BUNDLE
         src/GERNativeMain.mm
