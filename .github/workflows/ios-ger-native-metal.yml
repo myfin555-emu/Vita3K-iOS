@@ -158,7 +158,7 @@ jobs:
         run: |
           /usr/bin/unzip -l artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa | grep -F "Payload/Vita3K-iOS.app/Vita3K-iOS"
           /usr/bin/unzip -p artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa Payload/Vita3K-iOS.app/Info.plist > artifacts/ger-info.plist
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" artifacts/ger-info.plist | grep -Fx "org.vita3k.ger.a11"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" artifacts/ger-info.plist | grep -Fx "org.vita3k.ger.native"
 
       - name: Upload unsigned GE:R Native Metal IPA
         uses: actions/upload-artifact@v4
