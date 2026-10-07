@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>GER Native</string>
     <key>CFBundleExecutable</key>
-    <string>Vita3K-iOS</string>
+    <string>GodEaterResurrection</string>
     <key>CFBundleIdentifier</key>
     <string>@VITA3K_IOS_BUNDLE_ID@</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.1.0</string>
     <key>CFBundleVersion</key>
-    <string>100</string>
+    <string>110</string>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
     <key>LSRequiresIPhoneOS</key>
