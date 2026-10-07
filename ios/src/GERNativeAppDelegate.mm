@@ -166,7 +166,7 @@
 
 - (void)importGameFolder {
     UIDocumentPickerViewController *picker =
-        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTType.folder]
+        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType typeWithIdentifier:@"public.folder"]]
                                                                   asCopy:NO];
     picker.delegate = self;
     picker.allowsMultipleSelection = NO;
