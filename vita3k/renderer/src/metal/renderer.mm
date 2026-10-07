@@ -435,8 +435,11 @@ void MetalContext::set_vertex_stream(size_t index, size_t size, Ptr<const uint8_
 void MetalContext::set_uniform(bool vertex, int block, uint32_t size, const Ptr<const void> data) {
     if (block < 0 || block >= static_cast<int>(SCE_GXM_MAX_TEXTURE_UNITS) || !data || !size)
         return;
-    auto *program = vertex ? record.vertex_program.get(mem)->renderer_data.get()
-                            : record.fragment_program.get(mem)->renderer_data.get();
+    const ShaderProgram *program = nullptr;
+    if (vertex)
+        program = record.vertex_program.get(mem)->renderer_data.get();
+    else
+        program = record.fragment_program.get(mem)->renderer_data.get();
     if (!program) return;
     const auto &offsets = program->uniform_buffer_data_offsets;
     if (block < 0 || block >= static_cast<int>(offsets.size())) return;
@@ -465,8 +468,8 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     if (!render_target || !record.vertex_program || !record.fragment_program || !count || !indices)
         return;
 
-    const auto *vp = dynamic_cast<const MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
-    const auto *fp = dynamic_cast<const MetalFragmentProgram *>(record.fragment_program.get(mem)->renderer_data.get());
+    const auto *vp = static_cast<const MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
+    const auto *fp = static_cast<const MetalFragmentProgram *>(record.fragment_program.get(mem)->renderer_data.get());
     if (!vp || !fp) return;
 
     auto pipeline = pipeline_for_draw();
@@ -695,7 +698,7 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
     for (size_t i = 0; i < strides.size(); ++i)
         d.vertexDescriptor.layouts[4 + i].stride = strides[i] ? strides[i] : 4;
     if (fp->has_blend && !record.is_maskupdate) {
-        auto &a = d.colorAttachments[0];
+        auto a = d.colorAttachments[0];
         a.blendingEnabled = fp->blend.colorFunc != SCE_GXM_BLEND_FUNC_NONE || fp->blend.alphaFunc != SCE_GXM_BLEND_FUNC_NONE;
         a.rgbBlendOperation = blend_op(fp->blend.colorFunc);
         a.alphaBlendOperation = blend_op(fp->blend.alphaFunc);
@@ -741,7 +744,7 @@ bool MetalState::init() {
         auto handle = frame->handle();
         if (auto *sdl = std::get_if<SDLDisplayHandle>(&handle); sdl && sdl->window) {
             metal_view = SDL_Metal_CreateView(sdl->window);
-            layer = SDL_Metal_GetLayer(metal_view);
+            layer = (__bridge CAMetalLayer *)SDL_Metal_GetLayer(metal_view);
         }
     }
     if (!layer) {
@@ -912,8 +915,9 @@ bool create(MetalState &state, std::unique_ptr<RenderTarget> &target,
     dd.usage = MTLTextureUsageRenderTarget;
     dd.storageMode = MTLStorageModePrivate;
     rt->depth = [state.device newTextureWithDescriptor:dd];
+    const bool ok = rt->color && rt->depth;
     target = std::move(rt);
-    return target && target->color && target->depth;
+    return ok;
 }
 
 void destroy(MetalState &, std::unique_ptr<RenderTarget> &target) {
@@ -988,7 +992,7 @@ void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNo
     const size_t bytes = height * stride * 4;
     std::vector<uint8_t> pixels(bytes);
     [render_target->color getBytes:pixels.data() bytesPerRow:stride * 4
-        bytesPerImage:0 from:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 slice:0];
+        bytesPerImage:0 fromRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 slice:0];
     auto *dst = static_cast<uint8_t *>(record.color_surface.data.get(mem));
     if (dst) {
         for (size_t y = 0; y < height; ++y)
