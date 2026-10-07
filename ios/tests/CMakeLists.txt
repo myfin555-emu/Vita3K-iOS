@@ -102,3 +102,13 @@ set_tests_properties(speed_settings_tests PROPERTIES TIMEOUT 30)
 
 add_test(NAME ios_turbo_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/IOSTurboTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(ios_turbo_tests PROPERTIES TIMEOUT 30)
+
+
+add_executable(ger_native_executable_loader_tests
+    GERNativeExecutableLoaderTests.cpp
+    ../src/GERNativeExecutableLoader.cpp
+    ../src/GERNativeLogger.cpp
+)
+target_compile_features(ger_native_executable_loader_tests PRIVATE cxx_std_17)
+target_include_directories(ger_native_executable_loader_tests PRIVATE ../include)
+add_test(NAME ger_native_executable_loader_tests COMMAND ger_native_executable_loader_tests)
