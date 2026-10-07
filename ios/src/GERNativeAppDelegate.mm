@@ -272,10 +272,11 @@
     }
 
     NSMutableString *message = [NSMutableString stringWithFormat:
-        @"File: eboot.bin\nSize: %llu bytes\nFormat: %s\nArchitecture: %s\nEndianness: %s\n",
+        @"File: eboot.bin\nSize: %llu bytes\nFormat: %s\nArchitecture: %s\nMachine: %s\nEndianness: %s\n",
         static_cast<unsigned long long>(report.file_size),
         report.format.c_str(),
         report.architecture.c_str(),
+        report.machine.c_str(),
         report.endianness.c_str()];
 
     if (!report.entry_point.empty())
@@ -284,6 +285,12 @@
         [message appendFormat:@"Program headers: %s\n", report.program_headers.c_str()];
     if (!report.sections.empty())
         [message appendFormat:@"Sections: %s\n", report.sections.c_str()];
+    if (!report.elf_flags.empty())
+        [message appendFormat:@"ELF flags: %s\n", report.elf_flags.c_str()];
+    if (!report.program_header_details.empty())
+        [message appendFormat:@"\nProgram header details:\n%s", report.program_header_details.c_str()];
+    if (!report.section_details.empty())
+        [message appendFormat:@"\nSection details:\n%s", report.section_details.c_str()];
     if (!report.embedded_elf.empty())
         [message appendFormat:@"ELF: %s\n", report.embedded_elf.c_str()];
 
