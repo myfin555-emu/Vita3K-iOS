@@ -320,7 +320,7 @@ void MetalTextureCache::configure_texture(const SceGxmTexture &texture) {
     desc.width = width;
     desc.height = height;
     desc.mipmapLevelCount = std::max<uint32_t>(1, current_info->mip_count);
-    desc.arrayLength = 1;
+    desc.arrayLength = (desc.textureType == MTLTextureTypeCube) ? 6 : 1;
     desc.usage = MTLTextureUsageShaderRead;
     // CPU upload path uses replaceRegion:withBytes:. Private textures require
     // a staging resource + blit, so keep this correctness-first path shared.
