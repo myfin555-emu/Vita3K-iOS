@@ -951,17 +951,32 @@ void MetalState::present_frame(const DisplayFrameInfo &frame, MemState &mem) {
     const uint32_t height = static_cast<uint32_t>(frame.image_size.y);
     LOG_INFO("GE:R Metal TRACE present.begin frame={}x{} pitch={} base={}",
         width, height, frame.pitch, frame.base.get(mem) != nullptr);
-    if (!present_texture || present_texture.width != width || present_texture.height != height) {
-        MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-            width:width height:height mipmapped:NO];
-        d.usage = MTLTextureUsageShaderRead;
-        d.storageMode = MTLStorageModeShared;
-        present_texture = [device newTextureWithDescriptor:d];
+    // Prefer the native Metal render target captured by sync_surface(). This is
+    // the actual final GXM color surface and avoids a lossy/format-sensitive
+    // round-trip through guest memory. Keep the old upload path as a fallback
+    // for frames that have not yet been synchronized by the renderer.
+    id<MTLTexture> source_texture = nil;
+    if (present_source_texture && present_source_texture.width == width && present_source_texture.height == height) {
+        source_texture = present_source_texture;
+        LOG_INFO("GE:R Metal TRACE present.source native_render_target");
+    } else {
+        if (!present_texture || present_texture.width != width || present_texture.height != height) {
+            MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                width:width height:height mipmapped:NO];
+            d.usage = MTLTextureUsageShaderRead;
+            d.storageMode = MTLStorageModeShared;
+            present_texture = [device newTextureWithDescriptor:d];
+        }
+        const uint8_t *src = static_cast<const uint8_t *>(frame.base.get(mem));
+        if (!src || !present_texture) {
+            LOG_ERROR("GE:R Metal TRACE present.fail stage=source");
+            return;
+        }
+        [present_texture replaceRegion:MTLRegionMake2D(0, 0, width, height)
+            mipmapLevel:0 withBytes:src bytesPerRow:frame.pitch * 4];
+        source_texture = present_texture;
+        LOG_INFO("GE:R Metal TRACE present.source guest_framebuffer");
     }
-    const uint8_t *src = static_cast<const uint8_t *>(frame.base.get(mem));
-    if (!src || !present_texture) return;
-    [present_texture replaceRegion:MTLRegionMake2D(0, 0, width, height)
-        mipmapLevel:0 withBytes:src bytesPerRow:frame.pitch * 4];
 
     if (!present_pipeline) {
         static NSString *source =
@@ -1015,7 +1030,7 @@ void MetalState::present_frame(const DisplayFrameInfo &frame, MemState &mem) {
         return;
     }
     [enc setRenderPipelineState:present_pipeline];
-    [enc setFragmentTexture:present_texture atIndex:0];
+    [enc setFragmentTexture:source_texture atIndex:0];
     [enc setFragmentSamplerState:present_sampler atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [enc endEncoding];
@@ -1182,6 +1197,12 @@ void sync_viewport_flat(MetalContext &context) {
 void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNotification &fragment) {
     if (!command_buffer || !render_target || !record.color_surface.data) return;
     [command_buffer waitUntilCompleted];
+
+    // This render target is the exact surface that GXM asked us to synchronize.
+    // Preserve the native Metal texture for presentation so the final image does
+    // not have to be copied Metal -> guest RAM -> Metal again.
+    state.present_source_texture = render_target->color;
+
     const size_t width = record.color_surface.width;
     const size_t height = record.color_surface.height;
     const size_t stride = record.color_surface.strideInPixels;
