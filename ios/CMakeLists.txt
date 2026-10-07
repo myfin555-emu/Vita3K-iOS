@@ -14,7 +14,7 @@ if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE AND NO
     message(FATAL_ERROR "VITA3K_IOS_GER_METAL_FOUNDATION requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON unless the native GE:R target is selected.")
 endif()
 
-if(VITA3K_IOS_GER_ONLY)
+if(VITA3K_IOS_GER_ONLY AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
     add_library(ger_native_miniz STATIC
         ${CMAKE_SOURCE_DIR}/external/miniz/miniz.c
         ${CMAKE_SOURCE_DIR}/external/miniz/miniz.h
