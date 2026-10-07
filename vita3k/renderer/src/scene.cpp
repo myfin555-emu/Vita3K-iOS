@@ -120,9 +120,6 @@ COMMAND(handle_sync_surface_data) {
         // do it as soon as possible
         signal_notifications();
 
-#ifndef VITA3K_IOS_GER_ONLY
-#endif
-
     SceGxmColorSurface *surface = &render_context->record.color_surface;
     if (helper.cmd->status) {
         surface = helper.pop<SceGxmColorSurface *>();
