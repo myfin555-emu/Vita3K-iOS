@@ -36,7 +36,7 @@ int main() {
     data[e + 4] = 1; data[e + 5] = 1;
     put16(data, e + 0x10, 0xFE04);
     put16(data, e + 0x12, 40);
-    put32(data, e + 0x18, 0x100); // module-relative entry RVA
+    put32(data, e + 0x18, 0x8); // module-relative entry RVA
     put32(data, e + 0x1C, 0x34);
     put16(data, e + 0x2A, 0x20);
     put16(data, e + 0x2C, 3);
@@ -80,7 +80,7 @@ int main() {
 
     assert(ok && error.empty());
     assert(image.module_base == 0x81000000);
-    assert(image.entry == 0x81000100);
+    assert(image.entry == 0x81000008);
     assert(image.memory_size == 0x1008);
     assert(image.memory[0] == 0 && image.memory[15] == 15);
     assert(image.memory[0x1000] == 0);
