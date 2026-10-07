@@ -126,7 +126,6 @@ COMMAND_SET_STATE(viewport) {
     const bool flat = helper.pop<bool>();
     render_context->record.viewport_flat = flat;
 
-    const float previous_flip_y = render_context->record.viewport_flip[1];
     if (!flat) {
         // if we use msaa without downscaling the texture or the opposite, the surface size will differ from the expected
         // one by a factor of 2, one way or an other
@@ -156,9 +155,50 @@ COMMAND_SET_STATE(viewport) {
         render_context->record.z_scale = zScale;
 
         switch (renderer.current_backend) {
+        case Backend::Metal:
+            break;
+        default:
+            REPORT_MISSING(renderer.current_backend);
+            break;
+        }
+    } else {
+        render_context->record.viewport_flip[0] = 1.0f;
+        render_context->record.viewport_flip[1] = -1.0f;
+        render_context->record.viewport_flip[2] = 1.0f;
+        render_context->record.viewport_flip[3] = 1.0f;
+        render_context->record.z_offset = 0.0f;
+        render_context->record.z_scale = 1.0f;
+
+        switch (renderer.current_backend) {
+        case Backend::Metal:
+            break;
+        default:
+            REPORT_MISSING(renderer.current_backend);
+            break;
+        }
+    }
+
+    switch (renderer.current_backend) {
     case Backend::Metal:
         break;
+    default:
+        REPORT_MISSING(renderer.current_backend);
+        break;
+    }
+}
 
+COMMAND_SET_STATE(depth_bias) {
+    TRACY_FUNC_COMMANDS_SET_STATE(depth_bias);
+    const bool is_front = helper.pop<bool>();
+    const int factor = helper.pop<int>();
+    const int unit = helper.pop<int>();
+
+    render_context->record.depth_bias_unit = unit;
+    render_context->record.depth_bias_slope = factor;
+
+    switch (renderer.current_backend) {
+    case Backend::Metal:
+        break;
     default:
         REPORT_MISSING(renderer.current_backend);
         break;
