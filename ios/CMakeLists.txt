@@ -59,6 +59,12 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
         $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wall>
         $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wextra>)
     target_compile_definitions(Vita3KiOS PRIVATE VITA3K_IOS_UPSTREAM_CORE=1)
+    if(VITA3K_IOS_GER_ONLY)
+        # The option is a CMake variable; these sources consume it as a
+        # preprocessor macro to select the Metal-only GE:R path.
+        target_compile_definitions(Vita3KiOS PRIVATE VITA3K_IOS_GER_ONLY=1)
+        target_compile_definitions(app PRIVATE VITA3K_IOS_GER_ONLY=1)
+    endif()
     # Swift <-> Objective-C bridging.
     #   * The bridging header is what Swift sees: it exposes ONLY
     #     TsubomiBridge.h, a pure Objective-C facade. Swift deliberately does
