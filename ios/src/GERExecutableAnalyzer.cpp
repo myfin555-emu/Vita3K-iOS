@@ -243,6 +243,8 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                     if (si + 32 <= data.size()) {
                         const std::uint64_t raw_offset = u64le(data.data() + si);
                         const std::uint64_t raw_size = u64le(data.data() + si + 8);
+                        const std::uint32_t compression = u32le(data.data() + si + 16);
+                        const std::uint32_t encryption = u32le(data.data() + si + 24);
                         if (raw_offset <= data.size() &&
                             raw_size >= delta + size &&
                             raw_size <= data.size() - raw_offset) {
