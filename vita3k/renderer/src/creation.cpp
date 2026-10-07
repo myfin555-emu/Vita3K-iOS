@@ -142,11 +142,7 @@ COMMAND(handle_memory_map) {
     const Ptr<void> addr = helper.pop<Ptr<void>>();
     const uint32_t size = helper.pop<uint32_t>();
 
-    if (renderer.current_backend == Backend::Vulkan) {
-#ifndef VITA3K_IOS_GER_ONLY
-        dynamic_cast<vulkan::VKState &>(renderer).map_memory(mem, addr, size);
-#endif
-    } else if (renderer.current_backend == Backend::Metal) {
+    if (renderer.current_backend == Backend::Metal) {
         dynamic_cast<metal::MetalState &>(renderer).map_memory(mem, addr, size);
     }
 
@@ -158,11 +154,7 @@ COMMAND(handle_memory_unmap) {
 
     const Ptr<void> addr = helper.pop<Ptr<void>>();
 
-    if (renderer.current_backend == Backend::Vulkan) {
-#ifndef VITA3K_IOS_GER_ONLY
-        dynamic_cast<vulkan::VKState &>(renderer).unmap_memory(mem, addr);
-#endif
-    } else if (renderer.current_backend == Backend::Metal) {
+    if (renderer.current_backend == Backend::Metal) {
         dynamic_cast<metal::MetalState &>(renderer).unmap_memory(mem, addr);
     }
 
