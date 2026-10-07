@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string>
 #include <system_error>
+#include <sstream>
 
 namespace ger::ios {
 namespace fs = std::filesystem;
