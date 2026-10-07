@@ -79,7 +79,7 @@ COMMAND(handle_set_context) {
     switch (renderer.current_backend) {
     case Backend::Metal:
         reinterpret_cast<metal::MetalContext *>(render_context)->set_context(
-            dynamic_cast<metal::MetalRenderTarget *>(rt));
+            static_cast<metal::MetalRenderTarget *>(rt));
         break;
 
     default:
