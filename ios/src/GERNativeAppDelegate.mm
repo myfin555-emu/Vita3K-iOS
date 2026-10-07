@@ -19,17 +19,38 @@
 }
 
 - (void)loadView {
-    self.metalView = [[MTKView alloc] initWithFrame:CGRectZero
-                                             device:MTLCreateSystemDefaultDevice()];
-    self.metalView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.metalView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
-    self.view = self.metalView;
+    self.view = [[UIView alloc] initWithFrame:CGRectZero];
+    self.view.backgroundColor = UIColor.blackColor;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    self.view.backgroundColor = UIColor.blackColor;
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    if (!device) {
+        self.titleLabel = [[UILabel alloc] init];
+        self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.titleLabel.text = @"GOD EATER RESURRECTION";
+        self.titleLabel.textColor = UIColor.whiteColor;
+        self.titleLabel.textAlignment = NSTextAlignmentCenter;
+        self.titleLabel.numberOfLines = 0;
+        self.titleLabel.text = @"GOD EATER RESURRECTION\n\nMetal is not available on this device.";
+        [self.view addSubview:self.titleLabel];
+        [NSLayoutConstraint activateConstraints:@[
+            [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:24.0],
+            [self.titleLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24.0],
+            [self.titleLabel.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor]
+        ]];
+        return;
+    }
+
+    self.metalView = [[MTKView alloc] initWithFrame:CGRectZero device:device];
+    self.metalView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.metalView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
+    self.metalView.framebufferOnly = YES;
+    self.metalView.enableSetNeedsDisplay = NO;
+    self.metalView.paused = YES;
+    [self.view addSubview:self.metalView];
 
     UIView *panel = [[UIView alloc] init];
     panel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -70,6 +91,10 @@
     [panel addSubview:self.settingsButton];
 
     [NSLayoutConstraint activateConstraints:@[
+        [self.metalView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.metalView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.metalView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.metalView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [panel.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:20.0],
         [panel.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-20.0],
         [panel.centerYAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.centerYAnchor],
@@ -102,10 +127,17 @@
             @"Title ID: PCSE00801\nGame files are loaded from the user's install directory.\n\nNative runtime: Metal / ARM64";
     }
 
+    self.navigationItem.title = @"GER Native 1.0";
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+
+    if (!self.metalView || self.renderer)
+        return;
+
     self.renderer = [[GERNativeRenderer alloc] initWithView:self.metalView];
     [self.renderer start];
-
-    self.navigationItem.title = @"GER Native 1.0";
 }
 
 - (void)showSettings {
