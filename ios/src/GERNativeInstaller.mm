@@ -25,7 +25,7 @@ constexpr std::string_view kTitleId = "PCSE00801";
 constexpr std::uint64_t kSafetyMargin = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint64_t kMaximumInstallSize = 32ULL * 1024ULL * 1024ULL * 1024ULL;
 
-bool is_directory(const fs::path &path) {
+bool path_is_directory(const fs::path &path) {
     std::error_code ec;
     return fs::is_directory(path, ec);
 }
@@ -36,7 +36,7 @@ bool is_file(const fs::path &path) {
 }
 
 bool valid_game_root(const fs::path &root) {
-    return is_directory(root / "sce_sys")
+    return path_is_directory(root / "sce_sys")
         && is_file(root / "sce_sys/param.sfo")
         && (is_file(root / "eboot.bin")
             || is_file(root / "EBOOT.BIN")
@@ -62,7 +62,7 @@ fs::path locate_game_root(const fs::path &selected) {
     }
 
     std::error_code ec;
-    if (!is_directory(selected))
+    if (!path_is_directory(selected))
         return {};
 
     fs::recursive_directory_iterator it(
@@ -199,7 +199,7 @@ InstallResult replace_transactionally(const fs::path &temporary,
     fs::remove_all(backup, ec);
     ec.clear();
 
-    if (is_directory(destination)) {
+    if (path_is_directory(destination)) {
         fs::rename(destination, backup, ec);
         if (ec)
             return fail_result("Could not prepare the existing GE:R installation for replacement: " + ec.message());
@@ -207,7 +207,7 @@ InstallResult replace_transactionally(const fs::path &temporary,
 
     fs::rename(temporary, destination, ec);
     if (ec) {
-        if (is_directory(backup)) {
+        if (path_is_directory(backup)) {
             std::error_code restore_ec;
             fs::rename(backup, destination, restore_ec);
         }
