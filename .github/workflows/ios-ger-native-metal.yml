@@ -138,7 +138,7 @@ jobs:
           app="build-ios-ger-metal/ios/Release-iphoneos/GodEaterResurrection.app"
           test -d "$app"
           test -f "$app/GodEaterResurrection"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist" | grep -Fx "org.vita3k.ger.a11"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist" | grep -Fx "org.vita3k.ger.native"
 
       - name: Normalize GE:R bundle for IPA packager
         run: |
