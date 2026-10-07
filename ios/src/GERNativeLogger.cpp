@@ -1,8 +1,7 @@
 #include <vita3k_ios/GERNativeLogger.h>
 
-#import <Foundation/Foundation.h>
-
 #include <chrono>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -16,10 +15,10 @@ namespace {
 std::mutex g_log_mutex;
 
 std::string documents_path() {
-    NSArray<NSString *> *paths =
-        NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *path = paths.firstObject;
-    return path ? std::string(path.UTF8String) : std::string{};
+    const char *home = std::getenv("HOME");
+    if (home == nullptr || *home == '\0')
+        return {};
+    return (std::filesystem::path(home) / "Documents").string();
 }
 
 std::string timestamp() {
