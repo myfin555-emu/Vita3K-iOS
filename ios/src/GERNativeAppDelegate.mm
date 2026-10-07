@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#import <vita3k_ios/GERExecutableAnalyzer.h>
 #import <vita3k_ios/GERNativeInstaller.h>
 #import <vita3k_ios/GERNativeRenderer.h>
 #import <vita3k_ios/GERNativeRuntime.h>
@@ -16,6 +17,7 @@
 @property(nonatomic, strong) UILabel *detailsLabel;
 @property(nonatomic, strong) UIButton *installFolderButton;
 @property(nonatomic, strong) UIButton *installArchiveButton;
+@property(nonatomic, strong) UIButton *analyzeButton;
 @property(nonatomic, strong) UIButton *settingsButton;
 @property(nonatomic, strong) UIProgressView *installProgress;
 @property(nonatomic, strong) UIActivityIndicatorView *installSpinner;
@@ -104,6 +106,12 @@
     self.installArchiveButton.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
     [self.installArchiveButton addTarget:self action:@selector(selectGameArchive) forControlEvents:UIControlEventTouchUpInside];
 
+    self.analyzeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.analyzeButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.analyzeButton setTitle:@"Analyze GE:R eboot.bin" forState:UIControlStateNormal];
+    self.analyzeButton.titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightSemibold];
+    [self.analyzeButton addTarget:self action:@selector(analyzeExecutable) forControlEvents:UIControlEventTouchUpInside];
+
     self.installProgress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
     self.installProgress.translatesAutoresizingMaskIntoConstraints = NO;
     self.installProgress.progress = 0.0;
@@ -124,6 +132,7 @@
     [panel addSubview:self.detailsLabel];
     [panel addSubview:self.installFolderButton];
     [panel addSubview:self.installArchiveButton];
+    [panel addSubview:self.analyzeButton];
     [panel addSubview:self.installProgress];
     [panel addSubview:self.installSpinner];
     [panel addSubview:self.settingsButton];
@@ -158,7 +167,10 @@
         [self.installArchiveButton.topAnchor constraintEqualToAnchor:self.installFolderButton.bottomAnchor constant:8.0],
         [self.installArchiveButton.centerXAnchor constraintEqualToAnchor:panel.centerXAnchor],
 
-        [self.installProgress.topAnchor constraintEqualToAnchor:self.installArchiveButton.bottomAnchor constant:18.0],
+        [self.analyzeButton.topAnchor constraintEqualToAnchor:self.installArchiveButton.bottomAnchor constant:8.0],
+        [self.analyzeButton.centerXAnchor constraintEqualToAnchor:panel.centerXAnchor],
+
+        [self.installProgress.topAnchor constraintEqualToAnchor:self.analyzeButton.bottomAnchor constant:18.0],
         [self.installProgress.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:28.0],
         [self.installProgress.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-28.0],
 
@@ -171,7 +183,7 @@
     ]];
 
     [self refreshGameStatus];
-    self.navigationItem.title = @"GER Native 1.1";
+    self.navigationItem.title = @"GER Native 1.2";
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -206,6 +218,7 @@
     _installing = value;
     self.installFolderButton.enabled = !value;
     self.installArchiveButton.enabled = !value;
+    self.analyzeButton.enabled = !value;
     self.settingsButton.enabled = !value;
     self.installProgress.hidden = !value;
     if (value) {
@@ -214,6 +227,74 @@
     } else {
         [self.installSpinner stopAnimating];
     }
+}
+
+- (void)analyzeExecutable {
+    if (_installing)
+        return;
+
+    const auto status = _runtime.scan();
+    if (!status.ready || status.game.root.empty()) {
+        [self showImportError:@"Install a complete PCSE00801 game first. The analyzer requires sce_sys/param.sfo and eboot.bin."];
+        return;
+    }
+
+    std::filesystem::path executable;
+    const std::array<const char *, 3> names = {"eboot.bin", "EBOOT.BIN", "eboot.bin.self"};
+    for (const auto *name : names) {
+        const auto candidate = status.game.root / name;
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(candidate, ec)) {
+            executable = candidate;
+            break;
+        }
+    }
+
+    if (executable.empty()) {
+        [self showImportError:@"The installed PCSE00801 directory does not contain eboot.bin."];
+        return;
+    }
+
+    const auto report = ger::ios::analyze_executable(executable);
+    if (!report.readable) {
+        [self showImportError:[NSString stringWithUTF8String:report.message.c_str()]];
+        return;
+    }
+
+    NSMutableString *message = [NSMutableString stringWithFormat:
+        @"File: eboot.bin\nSize: %llu bytes\nFormat: %s\nArchitecture: %s\nEndianness: %s\n",
+        static_cast<unsigned long long>(report.file_size),
+        report.format.c_str(),
+        report.architecture.c_str(),
+        report.endianness.c_str()];
+
+    if (!report.entry_point.empty())
+        [message appendFormat:@"Entry point: %s\n", report.entry_point.c_str()];
+    if (!report.program_headers.empty())
+        [message appendFormat:@"Program headers: %s\n", report.program_headers.c_str()];
+    if (!report.sections.empty())
+        [message appendFormat:@"Sections: %s\n", report.sections.c_str()];
+    if (!report.embedded_elf.empty())
+        [message appendFormat:@"ELF: %s\n", report.embedded_elf.c_str()];
+
+    [message appendFormat:@"\nDetected API strings: %lu", static_cast<unsigned long>(report.api_strings.size())];
+    if (!report.api_strings.empty()) {
+        [message appendString:@"\n"];
+        for (std::size_t i = 0; i < report.api_strings.size(); ++i) {
+            if (i)
+                [message appendString:@", "];
+            [message appendString:[NSString stringWithUTF8String:report.api_strings[i].c_str()]];
+        }
+    }
+
+    [message appendFormat:@"\n\nAnalyzer: read-only. No game bytes were modified or embedded."];
+
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"GE:R Executable Analysis"
+                         message:message
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)selectGameFolder {
@@ -343,7 +424,7 @@
 - (void)showSettings {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"GER Native Settings"
-                         message:@"Version 1.1.0\n\nRenderer: Native Metal\nRuntime: Native GE:R foundation\nEmulator core: disabled\n\nGame installation:\n• Folder import\n• ZIP/VPK extraction\n• PCSE00801 validation\n• Transactional replacement\n• Free-space check\n\nGame execution is not implemented yet. This build installs and inspects the user's external GE:R data; it does not embed the game in the IPA."
+                         message:@"Version 1.2.0\n\nRenderer: Native Metal\nRuntime: Native GE:R foundation\nEmulator core: disabled\n\nGame installation:\n• Folder import\n• ZIP/VPK extraction\n• PCSE00801 validation\n• Transactional replacement\n• Free-space check\n• Read-only eboot.bin executable analyzer\n\nGame execution is not implemented yet. This build installs and inspects the user's external GE:R data; it does not embed the game in the IPA."
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
