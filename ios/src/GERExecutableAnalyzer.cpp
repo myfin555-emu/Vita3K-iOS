@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <initializer_list>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -14,14 +15,6 @@
 
 namespace ger::ios {
 namespace {
-
-template <typename T>
-bool read_at(const std::vector<std::uint8_t> &data, std::size_t offset, T &value) {
-    if (offset > data.size() || sizeof(T) > data.size() - offset)
-        return false;
-    std::memcpy(&value, data.data() + offset, sizeof(T));
-    return true;
-}
 
 std::uint16_t u16le(const std::uint8_t *p) {
     return static_cast<std::uint16_t>(p[0]) |
