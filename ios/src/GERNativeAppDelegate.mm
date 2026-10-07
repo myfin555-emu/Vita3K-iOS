@@ -189,7 +189,7 @@
     ]];
 
     [self refreshGameStatus];
-    self.navigationItem.title = @"GER Native 1.2";
+    self.navigationItem.title = @"GER Native 1.3";
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -279,6 +279,8 @@
         report.machine.c_str(),
         report.endianness.c_str()];
 
+    if (!report.self_info.empty())
+        [message appendFormat:@"SELF: %s\n", report.self_info.c_str()];
     if (!report.entry_point.empty())
         [message appendFormat:@"Entry point: %s\n", report.entry_point.c_str()];
     if (!report.program_headers.empty())
@@ -293,6 +295,14 @@
         [message appendFormat:@"\nSection details:\n%s", report.section_details.c_str()];
     if (!report.embedded_elf.empty())
         [message appendFormat:@"ELF: %s\n", report.embedded_elf.c_str()];
+    if (!report.dynamic_info.empty())
+        [message appendFormat:@"\nDynamic sections:\n%s", report.dynamic_info.c_str()];
+    if (!report.symbol_details.empty())
+        [message appendFormat:@"\nSymbols:\n%s", report.symbol_details.c_str()];
+    if (!report.relocation_details.empty())
+        [message appendFormat:@"\nRelocations:\n%s", report.relocation_details.c_str()];
+    if (!report.note_details.empty())
+        [message appendFormat:@"\nNotes:\n%s", report.note_details.c_str()];
 
     [message appendFormat:@"\nDetected API strings: %lu", static_cast<unsigned long>(report.api_strings.size())];
     if (!report.api_strings.empty()) {
@@ -441,7 +451,7 @@
 - (void)showSettings {
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"GER Native Settings"
-                         message:@"Version 1.2.0\n\nRenderer: Native Metal\nRuntime: Native GE:R foundation\nEmulator core: disabled\n\nGame installation:\n• Folder import\n• ZIP/VPK extraction\n• PCSE00801 validation\n• Transactional replacement\n• Free-space check\n• Read-only eboot.bin executable analyzer\n\nGame execution is not implemented yet. This build installs and inspects the user's external GE:R data; it does not embed the game in the IPA."
+                         message:@"Version 1.3.0\n\nRenderer: Native Metal\nRuntime: Native GE:R foundation\nEmulator core: disabled\n\nGame installation:\n• Folder import\n• ZIP/VPK extraction\n• PCSE00801 validation\n• Transactional replacement\n• Free-space check\n• Read-only eboot.bin executable analyzer\n• SELF/ELF program, section, dynamic, symbol and relocation inspection\n\nGame execution is not implemented yet. This build installs and inspects the user's external GE:R data; it does not embed the game in the IPA."
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
