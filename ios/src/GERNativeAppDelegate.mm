@@ -201,48 +201,39 @@
     BOOL scoped = [selectedURL startAccessingSecurityScopedResource];
     NSFileManager *fm = [NSFileManager defaultManager];
 
-    @try {
-        NSURL *gameURL = [self findGameFolderInSelectedURL:selectedURL];
-        if (!gameURL) {
-            [self showImportError:@"ไม่พบโฟลเดอร์ PCSE00801\n\nให้เลือกโฟลเดอร์เกม PCSE00801 โดยตรง หรือเลือกโฟลเดอร์ vita ที่มี app/PCSE00801 อยู่ข้างใน."];
-            return;
-        }
+    NSURL *gameURL = [self findGameFolderInSelectedURL:selectedURL];
+    if (!gameURL) {
+        if (scoped)
+            [selectedURL stopAccessingSecurityScopedResource];
+        [self showImportError:@"ไม่พบโฟลเดอร์ PCSE00801\n\nให้เลือกโฟลเดอร์เกม PCSE00801 โดยตรง หรือเลือกโฟลเดอร์ vita ที่มี app/PCSE00801 อยู่ข้างใน."];
+        return;
+    }
 
-        NSString *documents = NSSearchPathForDirectoriesInDomains(
-            NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-        NSURL *destination = [NSURL fileURLWithPath:documents isDirectory:YES];
-        destination = [destination URLByAppendingPathComponent:@"PCSE00801" isDirectory:YES];
+    NSString *documents = NSSearchPathForDirectoriesInDomains(
+        NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSURL *destination = [NSURL fileURLWithPath:documents isDirectory:YES];
+    destination = [destination URLByAppendingPathComponent:@"PCSE00801" isDirectory:YES];
 
-        if ([fm fileExistsAtPath:destination.path]) {
-            UIAlertController *confirm = [UIAlertController
-                alertControllerWithTitle:@"GE:R is already imported"
-                                 message:@"Replace the existing PCSE00801 game folder with the selected folder?"
-                          preferredStyle:UIAlertControllerStyleAlert];
+    void (^releaseScope)(void) = ^{
+        if (scoped)
+            [selectedURL stopAccessingSecurityScopedResource];
+    };
 
-            [confirm addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                        style:UIAlertActionStyleCancel
-                                                      handler:nil]];
-            [confirm addAction:[UIAlertAction actionWithTitle:@"Replace"
-                                                        style:UIAlertActionStyleDestructive
-                                                      handler:^(__unused UIAlertAction *action) {
-                NSError *error = nil;
-                [fm removeItemAtURL:destination error:&error];
-                if (error || ![fm copyItemAtURL:gameURL toURL:destination error:&error]) {
-                    [self showImportError:error.localizedDescription ?: @"Could not import the GE:R game folder."];
-                    return;
-                }
-                [self refreshGameStatus];
-            }]];
-            [self presentViewController:confirm animated:YES completion:nil];
-            return;
-        }
-
+    void (^copyGame)(void) = ^{
         NSError *error = nil;
+        if ([fm fileExistsAtPath:destination.path] && ![fm removeItemAtURL:destination error:&error]) {
+            releaseScope();
+            [self showImportError:error.localizedDescription ?: @"Could not replace the existing GE:R game folder."];
+            return;
+        }
+
         if (![fm copyItemAtURL:gameURL toURL:destination error:&error]) {
+            releaseScope();
             [self showImportError:error.localizedDescription ?: @"Could not import the GE:R game folder."];
             return;
         }
 
+        releaseScope();
         [self refreshGameStatus];
 
         UIAlertController *done = [UIAlertController
@@ -251,11 +242,29 @@
                       preferredStyle:UIAlertControllerStyleAlert];
         [done addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:done animated:YES completion:nil];
+    };
+
+    if ([fm fileExistsAtPath:destination.path]) {
+        UIAlertController *confirm = [UIAlertController
+            alertControllerWithTitle:@"GE:R is already imported"
+                             message:@"Replace the existing PCSE00801 game folder with the selected folder?"
+                      preferredStyle:UIAlertControllerStyleAlert];
+
+        [confirm addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                    style:UIAlertActionStyleCancel
+                                                  handler:^(__unused UIAlertAction *action) {
+            releaseScope();
+        }]];
+        [confirm addAction:[UIAlertAction actionWithTitle:@"Replace"
+                                                    style:UIAlertActionStyleDestructive
+                                                  handler:^(__unused UIAlertAction *action) {
+            copyGame();
+        }]];
+        [self presentViewController:confirm animated:YES completion:nil];
+        return;
     }
-    @finally {
-        if (scoped)
-            [selectedURL stopAccessingSecurityScopedResource];
-    }
+
+    copyGame();
 }
 
 - (void)showImportError:(NSString *)message {
