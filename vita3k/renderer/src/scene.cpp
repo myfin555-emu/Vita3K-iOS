@@ -133,17 +133,6 @@ COMMAND(handle_sync_surface_data) {
         }
     }
 
-    // additional check to make sure we never try to perform surface sync on OpenGL with a non-integer resolution multiplier
-    if (renderer.current_backend == Backend::OpenGL && static_cast<int>(renderer.res_multiplier * 4.0f) % 4 != 0)
-        renderer.disable_surface_sync = true;
-
-    if (renderer.disable_surface_sync || renderer.current_backend == Backend::Vulkan) {
-        if (helper.cmd->status) {
-            complete_command(renderer, helper, 0);
-        }
-        signal_notifications();
-        return;
-    }
 
 #ifndef __ANDROID__
 
