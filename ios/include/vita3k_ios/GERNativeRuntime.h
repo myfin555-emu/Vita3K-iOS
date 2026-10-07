@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <vita3k_ios/GERNativeExecutableLoader.h>
+
 namespace ger::ios {
 
 struct GameInstall {
@@ -17,8 +19,11 @@ struct GameInstall {
 
 struct RuntimeStatus {
     bool ready = false;
+    bool executable_loaded = false;
     std::string message;
+    std::string loader_message;
     GameInstall game;
+    NativeExecutableImage executable;
 };
 
 class NativeRuntime final {
@@ -35,6 +40,7 @@ public:
 
 private:
     RuntimeStatus status_;
+    NativeExecutableLoader executable_loader_;
     bool running_ = false;
     double elapsed_ = 0.0;
 };
