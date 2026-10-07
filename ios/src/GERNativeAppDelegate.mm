@@ -272,8 +272,8 @@
 
     const std::filesystem::path source(url.path.UTF8String ?: "");
     const auto documents = ger::ios::NativeInstaller::documents_root();
-    const auto destination = ger::ios::NativeInstaller::game_root();
-    const BOOL replacing = std::filesystem::is_directory(destination);
+    const auto existingStatus = _runtime.scan();
+    const BOOL replacing = existingStatus.game.has_param_sfo && existingStatus.game.has_eboot;
 
     if (replacing) {
         [self setInstalling:NO message:@"GE:R already installed."];
