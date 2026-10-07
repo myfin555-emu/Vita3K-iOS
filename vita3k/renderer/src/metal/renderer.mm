@@ -637,8 +637,8 @@ id<MTLDepthStencilState> MetalContext::depth_state_for_draw() {
 }
 
 id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
-    auto *vp = dynamic_cast<MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
-    auto *fp = dynamic_cast<MetalFragmentProgram *>(record.fragment_program.get(mem)->renderer_data.get());
+    auto *vp = static_cast<MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
+    auto *fp = static_cast<MetalFragmentProgram *>(record.fragment_program.get(mem)->renderer_data.get());
     if (!vp || !fp) return nil;
     const auto key = pointer_key(vp, fp, record);
     auto found = pipelines.find(key);
