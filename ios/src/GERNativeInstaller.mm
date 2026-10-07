@@ -79,7 +79,7 @@ fs::path locate_game_root(const fs::path &selected) {
 }
 
 bool safe_archive_path(std::string_view path) {
-    if (path.empty() || path.front() == '/' || path.front() == '\'
+    if (path.empty() || path.front() == '/' || path.front() == '\\'
         || path.find('\\') != std::string_view::npos
         || path.find(':') != std::string_view::npos)
         return false;
