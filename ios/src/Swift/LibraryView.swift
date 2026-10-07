@@ -21,7 +21,6 @@ struct LibraryView: View {
     @State private var liveAreaTarget: GameEntry?
     @State private var pendingLiveAreaLaunch: GameEntry?
     @State private var searchText = ""
-    @State private var searchPresented = false
 
     private var visibleGames: [GameEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -72,16 +71,8 @@ struct LibraryView: View {
                         }
                     }
                     .toolbar { toolbarContent }
-                    .searchable(text: $searchText, isPresented: $searchPresented, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search games")
+                    .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search games")
                     .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                searchPresented = true
-                            } label: {
-                                Image(systemName: "magnifyingglass")
-                            }
-                            .accessibilityLabel("Search games")
-                        }
                         ToolbarItem(placement: .topBarTrailing) {
                             Menu {
                                 Button {
