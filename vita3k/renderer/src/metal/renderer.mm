@@ -721,43 +721,6 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
     return p;
 }
 
-void sync_texture(MetalContext &context, MemState &mem, size_t index,
-    SceGxmTexture texture, const Config &config) {
-    const bool vertex = index >= SCE_GXM_MAX_TEXTURE_UNITS;
-    const size_t unit = vertex ? index - SCE_GXM_MAX_TEXTURE_UNITS : index;
-    if (unit >= SCE_GXM_MAX_TEXTURE_UNITS) return;
-    context.state.texture_cache.cache_and_bind_texture(texture, mem);
-    const size_t bound = context.state.texture_cache.bound_index();
-    auto tex = context.state.texture_cache.texture_at(bound);
-    auto samp = context.state.texture_cache.sampler_at(context.state.texture_cache.last_bound_sampler_index);
-    if (vertex) {
-        context.vertex_textures[unit] = tex;
-        context.vertex_samplers[unit] = samp;
-        context.shader_hints.vertex_textures[unit] = gxm::get_format(texture);
-    } else {
-        context.fragment_textures[unit] = tex;
-        context.fragment_samplers[unit] = samp;
-        context.shader_hints.fragment_textures[unit] = gxm::get_format(texture);
-    }
-}
-
-void sync_viewport_real(MetalContext &context, float xOffset, float yOffset,
-    float zOffset, float xScale, float yScale, float zScale) {
-    context.record.viewport_flip[0] = 1.0f;
-    context.record.viewport_flip[1] = yScale < 0 ? -1.0f : 1.0f;
-    context.record.viewport_flip[2] = 1.0f;
-    context.record.viewport_flip[3] = 1.0f;
-    context.record.z_offset = zOffset;
-    context.record.z_scale = zScale;
-}
-
-void sync_viewport_flat(MetalContext &context) {
-    context.record.viewport_flat = true;
-    context.record.viewport_flip = {1.0f, -1.0f, 1.0f, 1.0f};
-    context.record.z_offset = 0.0f;
-    context.record.z_scale = 1.0f;
-}
-
 MetalState::MetalState()
     : texture_cache(*this) {
     current_backend = Backend::Metal;
