@@ -47,7 +47,7 @@ void State::update_overlays() {
             auto notice = overlay_manager->get<overlay::shader_compile_notice>();
             if (!notice)
                 notice = overlay_manager->create<overlay::shader_compile_notice>();
-            notice->update_count(m_shaders_compiled_count, current_backend == Backend::Vulkan);
+            notice->update_count(m_shaders_compiled_count, false);
         } else if (m_shaders_compiled_count > 0) {
             auto notice = overlay_manager->get<overlay::shader_compile_notice>();
             if (notice && notice->should_hide()) {
@@ -245,10 +245,6 @@ void destroy_context(State &state, std::unique_ptr<Context> &context) {
 
 void destroy_context_during_shutdown(State &state, std::unique_ptr<Context> &context) {
     assert(!state.render_thread);
-
-    if (state.current_backend == Backend::OpenGL) {
-        state.set_current();
-    }
 
     if (state.context == context.get()) {
         state.context = nullptr;
