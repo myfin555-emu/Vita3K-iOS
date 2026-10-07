@@ -1,4 +1,5 @@
 #include <vita3k_ios/GERExecutableAnalyzer.h>
+#include <vita3k_ios/GERNativeLogger.h>
 
 #include <algorithm>
 #include <array>
@@ -54,7 +55,7 @@ bool starts_with(const std::vector<std::uint8_t> &data, std::initializer_list<st
 }
 
 void collect_api_strings(const std::vector<std::uint8_t> &data, std::vector<std::string> &out) {
-    static constexpr std::array<const char *, 20> needles = {
+    static constexpr std::array<const char *, 19> needles = {
         "sceKernel", "sceIo", "sceGxm", "sceAudio", "sceCtrl",
         "sceTouch", "sceDisplay", "sceAppMgr", "sceCommonDialog",
         "sceSysmodule", "sceNet", "sceHttp",
@@ -62,7 +63,10 @@ void collect_api_strings(const std::vector<std::uint8_t> &data, std::vector<std:
         "sceLibc", "sceClib", "sceKernelAllocMemBlock"
     };
 
+    NativeLogger::write("analyzer: collecting known Vita API strings");
     for (const char *needle : needles) {
+        if (needle == nullptr)
+            continue;
         const std::size_t length = std::char_traits<char>::length(needle);
         if (std::search(data.begin(), data.end(), needle, needle + length) != data.end())
             out.emplace_back(needle);
@@ -75,6 +79,7 @@ void collect_api_strings(const std::vector<std::uint8_t> &data, std::vector<std:
 
 ExecutableReport analyze_executable(const std::filesystem::path &path) {
     ExecutableReport report;
+    NativeLogger::write("analyzer: start " + path.string());
 
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream) {
@@ -90,6 +95,7 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
 
     const auto size = static_cast<std::uint64_t>(end);
     report.file_size = size;
+    NativeLogger::write("analyzer: eboot size=" + std::to_string(size));
     report.readable = true;
 
     // Read the complete executable because GE:R's eboot is small enough for the
@@ -116,6 +122,7 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
 
     const bool is_self = starts_with(data, {0x53, 0x43, 0x45, 0x00});
     const bool is_elf = starts_with(data, {0x7F, 0x45, 0x4C, 0x46});
+    NativeLogger::write(std::string("analyzer: outer format self=") + (is_self ? "yes" : "no") + " elf=" + (is_elf ? "yes" : "no"));
 
     if (is_self) {
         report.format = "SCE SELF";
@@ -183,7 +190,8 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
     }
 
     collect_api_strings(data, report.api_strings);
-
+    NativeLogger::write("analyzer: API string scan complete, matches=" + std::to_string(report.api_strings.size()));
+    NativeLogger::write("analyzer: complete format=" + report.format + " arch=" + report.architecture);
     return report;
 }
 
