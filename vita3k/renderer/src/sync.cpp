@@ -23,12 +23,7 @@
 #include <renderer/types.h>
 
 #include <display/state.h>
-#include <renderer/gl/functions.h>
-#include <renderer/gl/state.h>
 #ifndef VITA3K_IOS_GER_ONLY
-#include <renderer/vulkan/functions.h>
-#include <renderer/vulkan/state.h>
-#include <renderer/vulkan/types.h>
 #endif
 
 #include <renderer/functions.h>
@@ -49,10 +44,6 @@ COMMAND(handle_signal_sync_object) {
 
     if (features.can_surface_sync() && config.current_config.high_accuracy) {
 #ifndef VITA3K_IOS_GER_ONLY
-        if (renderer.current_backend == renderer::Backend::Vulkan) {
-            vulkan::signal_sync_object(dynamic_cast<vulkan::VKState &>(renderer), sync, timestamp);
-            return;
-        }
 #endif
         // Native Metal does not use Vulkan's queue/timestamp tracking.
         // Surface synchronization is completed by MetalContext::sync_surface,
@@ -87,15 +78,6 @@ COMMAND(handle_set_screen_filter) {
     std::unique_ptr<std::string> filter(helper.pop<std::string *>());
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        dynamic_cast<gl::GLState &>(renderer).set_screen_filter(*filter);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        dynamic_cast<vulkan::VKState &>(renderer).screen_renderer.set_filter(*filter);
-#endif
-        break;
     case Backend::Metal:
         renderer.set_screen_filter(*filter);
         break;
@@ -120,11 +102,6 @@ COMMAND(new_frame) {
     }
 
 #ifndef VITA3K_IOS_GER_ONLY
-    if (renderer.current_backend == Backend::Vulkan) {
-        renderer::Context *active_context = helper.pop<renderer::Context *>();
-        if (active_context) {
-            vulkan::new_frame(*reinterpret_cast<vulkan::VKContext *>(active_context));
-        }
     }
 #endif
 }
@@ -141,16 +118,6 @@ void finish(State &state, Context *context) {
     // Wait for the VK wait thread to finish processing all pending requests.
     // Push a callback request on the queue and wait for it to be treated
 #ifndef VITA3K_IOS_GER_ONLY
-    if (state.current_backend == Backend::Vulkan
-        && (state.features.enable_memory_mapping || state.features.support_unmapped_surface_sync)) {
-        auto &vk_state = static_cast<vulkan::VKState &>(state);
-        std::promise<void> promise;
-        auto callback = [&]() {
-            promise.set_value();
-        };
-        vk_state.request_queue.push(vulkan::CallbackRequest{ new vulkan::CallbackRequestFunction(callback) });
-        promise.get_future().wait();
-    }
 #endif
 }
 
