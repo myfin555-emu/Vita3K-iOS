@@ -46,7 +46,7 @@ add_library(
 
 target_include_directories(renderer PUBLIC include)
 if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_METAL_FOUNDATION)
-	target_link_libraries(renderer PUBLIC display mem stb shader glutil threads config util overlay)
+	target_link_libraries(renderer PUBLIC display mem stb shader threads config util overlay)
 else()
 	target_link_libraries(renderer PUBLIC display mem stb shader glutil threads config util vkutil overlay)
 endif()
