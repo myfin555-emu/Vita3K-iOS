@@ -13,6 +13,7 @@
 #include <renderer/texture_cache.h>
 #include <shader/spirv_recompiler.h>
 #include <shader/uniform_block.h>
+#include <util/hash.h>
 #include <util/log.h>
 
 #include <algorithm>
@@ -818,38 +819,74 @@ MetalState::~MetalState() = default;
 
 bool MetalState::init() {
     LOG_INFO("GE:R Metal TRACE state.init.begin");
-    device = MTLCreateSystemDefaultDevice();
-    if (!device) {
-        LOG_ERROR("GE:R Metal: no MTLDevice");
+
+    LOG_INFO("GE:R Metal TRACE state.init.device.create.begin");
+    @try {
+        device = MTLCreateSystemDefaultDevice();
+    } @catch (NSException *exception) {
+        LOG_ERROR("GE:R Metal TRACE state.init.device.create.exception name={} reason={}",
+            exception.name.UTF8String ? exception.name.UTF8String : "<unknown>",
+            exception.reason.UTF8String ? exception.reason.UTF8String : "<unknown>");
         return false;
     }
-    LOG_INFO("GE:R Metal TRACE device name={} registry_id={} low_power={} headless={} recommended_max_working_set={}",
-        device.name.UTF8String ? device.name.UTF8String : "<unknown>",
-        device.registryID, device.isLowPower, device.isHeadless,
-        static_cast<unsigned long long>(device.recommendedMaxWorkingSetSize));
-    command_queue = [device newCommandQueue];
-    if (!command_queue) {
-        LOG_ERROR("GE:R Metal TRACE state.init.fail reason=command_queue");
+    LOG_INFO("GE:R Metal TRACE state.init.device.create.done present={}", device != nil);
+    if (!device) {
+        LOG_ERROR("GE:R Metal TRACE state.init.fail stage=device reason=no_default_device");
         return false;
     }
 
+    LOG_INFO("GE:R Metal TRACE state.init.device.identity.begin");
+    NSString *device_name = [device name];
+    const char *device_name_utf8 = device_name.UTF8String;
+    LOG_INFO("GE:R Metal TRACE state.init.device.identity.done name={} registry_id={}",
+        device_name_utf8 ? device_name_utf8 : "<unknown>", device.registryID);
+
+    LOG_INFO("GE:R Metal TRACE state.init.command_queue.begin");
+    @try {
+        command_queue = [device newCommandQueue];
+    } @catch (NSException *exception) {
+        LOG_ERROR("GE:R Metal TRACE state.init.command_queue.exception name={} reason={}",
+            exception.name.UTF8String ? exception.name.UTF8String : "<unknown>",
+            exception.reason.UTF8String ? exception.reason.UTF8String : "<unknown>");
+        return false;
+    }
+    LOG_INFO("GE:R Metal TRACE state.init.command_queue.done present={}", command_queue != nil);
+    if (!command_queue) {
+        LOG_ERROR("GE:R Metal TRACE state.init.fail stage=command_queue reason=create_failed");
+        return false;
+    }
+
+    LOG_INFO("GE:R Metal TRACE state.init.display.begin frame_present={}", frame != nullptr);
     if (frame) {
+        LOG_INFO("GE:R Metal TRACE state.init.display.handle.begin");
         auto handle = frame->handle();
-        if (auto *sdl = std::get_if<SDLDisplayHandle>(&handle); sdl && sdl->window) {
-            metal_view = SDL_Metal_CreateView(sdl->window);
-            layer = (__bridge CAMetalLayer *)SDL_Metal_GetLayer(metal_view);
+        LOG_INFO("GE:R Metal TRACE state.init.display.handle.done");
+        if (auto *sdl = std::get_if<SDLDisplayHandle>(&handle); sdl) {
+            LOG_INFO("GE:R Metal TRACE state.init.display.sdl window_present={}", sdl->window != nullptr);
+            if (sdl->window) {
+                LOG_INFO("GE:R Metal TRACE state.init.display.create_view.begin");
+                metal_view = SDL_Metal_CreateView(sdl->window);
+                LOG_INFO("GE:R Metal TRACE state.init.display.create_view.done present={}", metal_view != nullptr);
+                if (metal_view) {
+                    LOG_INFO("GE:R Metal TRACE state.init.display.get_layer.begin");
+                    layer = (__bridge CAMetalLayer *)SDL_Metal_GetLayer(metal_view);
+                    LOG_INFO("GE:R Metal TRACE state.init.display.get_layer.done present={}", layer != nil);
+                }
+            }
         }
     }
     if (!layer) {
-        LOG_ERROR("GE:R Metal: SDL Metal layer unavailable");
+        LOG_ERROR("GE:R Metal TRACE state.init.fail stage=display reason=no_metal_layer");
         return false;
     }
+
+    LOG_INFO("GE:R Metal TRACE state.init.display.configure.begin");
     layer.device = device;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     layer.framebufferOnly = NO;
     LOG_INFO("GE:R Metal TRACE state.init.ready pixel_format={} framebuffer_only={} device={}",
         static_cast<uint32_t>(layer.pixelFormat), layer.framebufferOnly,
-        device.name.UTF8String ? device.name.UTF8String : "<unknown>");
+        device_name_utf8 ? device_name_utf8 : "<unknown>");
     return true;
 }
 
