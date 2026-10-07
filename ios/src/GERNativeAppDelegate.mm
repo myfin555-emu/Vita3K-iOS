@@ -9,7 +9,6 @@
 @property(nonatomic, strong) MTKView *metalView;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) GERNativeRenderer *renderer;
-@property(nonatomic, strong) ger::ios::NativeRuntime *unused;
 @end
 
 @implementation GERNativeViewController {
