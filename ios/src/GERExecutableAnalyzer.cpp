@@ -56,7 +56,11 @@ std::string program_type_name(std::uint32_t type) {
     case 5: return "SHLIB";
     case 6: return "PHDR";
     case 7: return "TLS";
-    default: return "TYPE_" + std::to_string(type);
+    case 0x60000000: return "SCE_RELA";
+    case 0x6FFFFF00: return "SCE_COMMENT";
+    case 0x6FFFFF01: return "SCE_VERSION";
+    case 0x70000001: return "SCE_UNK";
+    default: return "TYPE_" + hex_u64(type, 8);
     }
 }
 
@@ -171,7 +175,7 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                 x.align = u32le(p + 0x1C);
                 programs.emplace_back(x);
 
-                const bool file_range_ok =
+                const bool elf_range_ok =
                     static_cast<std::uint64_t>(x.file_offset) + x.filesz <= available();
                 const char *perm = (x.flags & 0x1) ? ((x.flags & 0x2) ? "RWX" : ((x.flags & 0x4) ? "RX" : "X"))
                                                    : ((x.flags & 0x2) ? "RW" : "R");
@@ -184,7 +188,7 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                    << " flags=" << hex_u64(x.flags, 2)
                    << " perm=" << perm
                    << " align=" << hex_u64(x.align, 8)
-                   << " range=" << (file_range_ok ? "valid" : "INVALID");
+                   << " elfRange=" << (elf_range_ok ? "valid" : "unmapped");
                 if (self_segment_info_offset != std::string::npos) {
                     const std::uint64_t si = static_cast<std::uint64_t>(self_segment_info_offset) +
                         static_cast<std::uint64_t>(i) * 32;
