@@ -75,6 +75,9 @@ COMMAND(handle_set_screen_filter) {
     case Backend::Metal:
         renderer.set_screen_filter(*filter);
         break;
+    default:
+        REPORT_MISSING(renderer.current_backend);
+        break;
     }
 }
 
