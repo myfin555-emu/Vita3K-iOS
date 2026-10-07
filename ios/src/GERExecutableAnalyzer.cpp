@@ -34,6 +34,49 @@ std::uint64_t u64le(const std::uint8_t *p) {
            (static_cast<std::uint64_t>(u32le(p + 4)) << 32);
 }
 
+std::string machine_name(std::uint16_t machine) {
+    switch (machine) {
+    case 3: return "Intel 80386";
+    case 8: return "MIPS";
+    case 20: return "PowerPC";
+    case 40: return "ARM";
+    case 62: return "x86-64";
+    case 183: return "AArch64";
+    default: return "Unknown (EM_" + std::to_string(machine) + ")";
+    }
+}
+
+std::string program_type_name(std::uint32_t type) {
+    switch (type) {
+    case 0: return "NULL";
+    case 1: return "LOAD";
+    case 2: return "DYNAMIC";
+    case 3: return "INTERP";
+    case 4: return "NOTE";
+    case 5: return "SHLIB";
+    case 6: return "PHDR";
+    case 7: return "TLS";
+    default: return "TYPE_" + std::to_string(type);
+    }
+}
+
+std::string section_type_name(std::uint32_t type) {
+    switch (type) {
+    case 0: return "NULL";
+    case 1: return "PROGBITS";
+    case 2: return "SYMTAB";
+    case 3: return "STRTAB";
+    case 4: return "RELA";
+    case 5: return "HASH";
+    case 6: return "DYNAMIC";
+    case 7: return "NOTE";
+    case 8: return "NOBITS";
+    case 9: return "REL";
+    case 11: return "DYNSYM";
+    default: return "TYPE_" + std::to_string(type);
+    }
+}
+
 std::string hex_u64(std::uint64_t value, unsigned width = 0) {
     std::ostringstream out;
     out << "0x" << std::hex << std::uppercase << std::setfill('0');
@@ -156,20 +199,89 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
                         const auto entry = u32le(e + 0x18);
                         const auto phoff = u32le(e + 0x1C);
                         const auto shoff = u32le(e + 0x20);
+                        const auto flags = u32le(e + 0x24);
+                        const auto phentsize = u16le(e + 0x2A);
                         const auto phnum = u16le(e + 0x2C);
+                        const auto shentsize = u16le(e + 0x2E);
                         const auto shnum = u16le(e + 0x30);
+                        const auto shstrndx = u16le(e + 0x32);
+                        const auto machine = u16le(e + 0x12);
+                        report.machine = machine_name(machine);
+                        report.elf_flags = hex_u64(flags, 8);
                         report.entry_point = hex_u64(entry, 8);
-                        report.program_headers = std::to_string(phnum) + " entries @ " + hex_u64(phoff, 8);
-                        report.sections = std::to_string(shnum) + " entries @ " + hex_u64(shoff, 8);
+                        report.program_headers = std::to_string(phnum) + " entries @ " + hex_u64(phoff, 8) +
+                            " (entry size " + std::to_string(phentsize) + ")";
+                        report.sections = std::to_string(shnum) + " entries @ " + hex_u64(shoff, 8) +
+                            " (entry size " + std::to_string(shentsize) + ")";
+
+                        std::ostringstream ph;
+                        for (std::uint16_t i = 0; i < phnum; ++i) {
+                            const std::uint64_t offset = static_cast<std::uint64_t>(phoff) +
+                                static_cast<std::uint64_t>(i) * phentsize;
+                            if (phentsize < 0x20 || offset + 0x20 > data.size() - elf_offset)
+                                break;
+                            const auto *p = e + offset;
+                            const auto type = u32le(p + 0x00);
+                            const auto file_offset = u32le(p + 0x04);
+                            const auto vaddr = u32le(p + 0x08);
+                            const auto filesz = u32le(p + 0x10);
+                            const auto memsz = u32le(p + 0x14);
+                            const auto pflags = u32le(p + 0x18);
+                            ph << "#" << i << " " << program_type_name(type)
+                               << " file=" << hex_u64(file_offset, 8)
+                               << " vaddr=" << hex_u64(vaddr, 8)
+                               << " fileSize=" << hex_u64(filesz, 8)
+                               << " memSize=" << hex_u64(memsz, 8)
+                               << " flags=" << hex_u64(pflags, 2) << "\n";
+                        }
+                        report.program_header_details = ph.str();
+
+                        if (shoff != 0 && shentsize >= 0x28 &&
+                            static_cast<std::uint64_t>(shoff) +
+                            static_cast<std::uint64_t>(shnum) * shentsize <= data.size() - elf_offset &&
+                            shstrndx < shnum) {
+                            const auto *strhdr = e + static_cast<std::uint64_t>(shoff) + static_cast<std::uint64_t>(shstrndx) * shentsize;
+                            const auto str_offset = u32le(strhdr + 0x10);
+                            const auto str_size = u32le(strhdr + 0x14);
+                            const char *strtab = nullptr;
+                            if (static_cast<std::uint64_t>(str_offset) + str_size <= data.size() - elf_offset)
+                                strtab = reinterpret_cast<const char *>(e + str_offset);
+
+                            std::ostringstream sh;
+                            for (std::uint16_t i = 0; i < shnum; ++i) {
+                                const auto *s = e + static_cast<std::uint64_t>(shoff) + static_cast<std::uint64_t>(i) * shentsize;
+                                const auto name_offset = u32le(s + 0x00);
+                                const auto type = u32le(s + 0x04);
+                                const auto addr = u32le(s + 0x0C);
+                                const auto file_offset = u32le(s + 0x10);
+                                const auto section_size = u32le(s + 0x14);
+                                std::string name;
+                                if (strtab && name_offset < str_size) {
+                                    const char *begin = strtab + name_offset;
+                                    const std::size_t max = str_size - name_offset;
+                                    const std::size_t length = std::strnlen(begin, max);
+                                    name.assign(begin, length);
+                                }
+                                sh << "#" << i << " " << (name.empty() ? "<unnamed>" : name)
+                                   << " " << section_type_name(type)
+                                   << " addr=" << hex_u64(addr, 8)
+                                   << " file=" << hex_u64(file_offset, 8)
+                                   << " size=" << hex_u64(section_size, 8) << "\n";
+                            }
+                            report.section_details = sh.str();
+                        }
                     }
                 } else if (elf_data == 2) {
                     report.endianness = "Big-endian";
+                    report.machine = machine_name(u16le(e + 0x12));
                 }
             } else if (elf_class == 2) {
                 report.architecture = "ELF64";
                 if (elf_data == 1) {
                     report.endianness = "Little-endian";
                     if (data.size() - elf_offset >= 0x40) {
+                        const auto machine = u16le(e + 0x12);
+                        report.machine = machine_name(machine);
                         const auto entry = u64le(e + 0x18);
                         const auto phoff = u64le(e + 0x20);
                         const auto shoff = u64le(e + 0x28);
