@@ -152,10 +152,6 @@ void process_batches(renderer::State &state, const FeatureState &features, MemSt
             if (state.context == nullptr)
                 return;
 
-            // keep the old behavior for opengl with vsync as it looks like the new one causes some issues
-            if (state.current_backend == Backend::OpenGL && config.current_config.v_sync)
-                return;
-
             renderer::SyncWaitResult wait_result = renderer::SyncWaitResult::TimedOut;
             if (cmd_list)
                 wait_result = wait_cmd(mem, *cmd_list);
