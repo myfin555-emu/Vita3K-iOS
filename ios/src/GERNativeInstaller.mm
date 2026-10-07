@@ -185,7 +185,7 @@ bool enough_space(const fs::path &documents, std::uint64_t bytes, std::string &e
 }
 
 InstallResult fail_result(std::string message) {
-    NativeLogger::write("installer: failure: " + message);
+    ger::ios::NativeLogger::write("installer: failure: " + message);
     InstallResult result;
     result.message = std::move(message);
     return result;
