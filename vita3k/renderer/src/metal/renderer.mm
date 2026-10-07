@@ -339,6 +339,11 @@ void MetalTextureCache::configure_texture(const SceGxmTexture &texture) {
     // a staging resource + blit, so keep this correctness-first path shared.
     desc.storageMode = MTLStorageModeShared;
     textures[index] = [state.device newTextureWithDescriptor:desc];
+    LOG_INFO("GE:R Metal TRACE texture.create index={} size={}x{} mip={} type={} format={} array={} usage={} storage={} success={}",
+        index, width, height, desc.mipmapLevelCount, static_cast<uint32_t>(desc.textureType),
+        static_cast<uint32_t>(desc.pixelFormat), desc.arrayLength,
+        static_cast<uint32_t>(desc.usage), static_cast<uint32_t>(desc.storageMode),
+        textures[index] != nil);
 }
 
 void MetalTextureCache::upload_texture_impl(SceGxmTextureBaseFormat base_format, uint32_t width,
@@ -390,6 +395,9 @@ void MetalTextureCache::upload_texture_impl(SceGxmTextureBaseFormat base_format,
         return;
     }
     const size_t row_bytes = stride * bpp;
+    LOG_INFO("GE:R Metal TRACE texture.upload index={} face={} mip={} size={}x{} stride={} bpp={} row_bytes={} format={}",
+        current_info->index, face, mip_index, width, height, stride, bpp, row_bytes,
+        static_cast<uint32_t>(tex.pixelFormat));
     [tex replaceRegion:region mipmapLevel:mip_index slice:slice withBytes:pixels
           bytesPerRow:row_bytes bytesPerImage:0];
 }
@@ -421,6 +429,10 @@ void MetalTextureCache::configure_sampler(size_t index, const SceGxmTexture &tex
     d.lodMinClamp = static_cast<float>(texture.true_lod_min());
     d.lodMaxClamp = FLT_MAX;
     samplers[index] = [state.device newSamplerStateWithDescriptor:d];
+    LOG_INFO("GE:R Metal TRACE sampler.create index={} min={} mag={} mip={} s={} t={} success={}",
+        index, static_cast<uint32_t>(d.minFilter), static_cast<uint32_t>(d.magFilter),
+        static_cast<uint32_t>(d.mipFilter), static_cast<uint32_t>(d.sAddressMode),
+        static_cast<uint32_t>(d.tAddressMode), samplers[index] != nil);
 }
 
 void MetalTextureCache::import_configure_impl(SceGxmTextureBaseFormat, uint32_t, uint32_t,
@@ -874,6 +886,8 @@ void MetalState::present_frame(const DisplayFrameInfo &frame, MemState &mem) {
     if (!layer || !command_queue) return;
     const uint32_t width = static_cast<uint32_t>(frame.image_size.x);
     const uint32_t height = static_cast<uint32_t>(frame.image_size.y);
+    LOG_INFO("GE:R Metal TRACE present.begin frame={}x{} pitch={} base={}",
+        width, height, frame.pitch, frame.base.get(mem) != nullptr);
     if (!present_texture || present_texture.width != width || present_texture.height != height) {
         MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
             width:width height:height mipmapped:NO];
@@ -903,7 +917,12 @@ void MetalState::present_frame(const DisplayFrameInfo &frame, MemState &mem) {
         p.fragmentFunction = [lib newFunctionWithName:@"f"];
         p.colorAttachments[0].pixelFormat = layer.pixelFormat;
         present_pipeline = [device newRenderPipelineStateWithDescriptor:p error:&error];
-        if (!present_pipeline) return;
+        if (!present_pipeline) {
+            LOG_ERROR("GE:R Metal TRACE present.pipeline.fail error={}",
+                error && error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "<no-error>");
+            return;
+        }
+        LOG_INFO("GE:R Metal TRACE present.pipeline.ready format={}", static_cast<uint32_t>(p.colorAttachments[0].pixelFormat));
         MTLSamplerDescriptor *sd = [MTLSamplerDescriptor new];
         sd.minFilter = MTLSamplerMinMagFilterLinear;
         sd.magFilter = MTLSamplerMinMagFilterLinear;
@@ -911,21 +930,46 @@ void MetalState::present_frame(const DisplayFrameInfo &frame, MemState &mem) {
     }
 
     id<CAMetalDrawable> drawable = [layer nextDrawable];
-    if (!drawable) return;
+    if (!drawable) {
+        LOG_ERROR("GE:R Metal TRACE present.fail stage=nextDrawable");
+        return;
+    }
     id<MTLCommandBuffer> cmd = [command_queue commandBuffer];
+    if (!cmd) {
+        LOG_ERROR("GE:R Metal TRACE present.fail stage=commandBuffer");
+        return;
+    }
+    LOG_INFO("GE:R Metal TRACE present.drawable ready size={}x{} pixel_format={}",
+        drawable.texture.width, drawable.texture.height, static_cast<uint32_t>(drawable.texture.pixelFormat));
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = drawable.texture;
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
     id<MTLRenderCommandEncoder> enc = [cmd renderCommandEncoderWithDescriptor:pass];
+    if (!enc) {
+        LOG_ERROR("GE:R Metal TRACE present.fail stage=encoder");
+        return;
+    }
     [enc setRenderPipelineState:present_pipeline];
     [enc setFragmentTexture:present_texture atIndex:0];
     [enc setFragmentSamplerState:present_sampler atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [enc endEncoding];
     [cmd presentDrawable:drawable];
+    [cmd addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+        NSError *error = completed.error;
+        LOG_INFO("GE:R Metal TRACE present.completed status={} error={}",
+            static_cast<uint32_t>(completed.status),
+            error && error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "none");
+        if (error)
+            LOG_ERROR("GE:R Metal PRESENT GPU ERROR domain={} code={} desc={}",
+                error.domain.UTF8String ? error.domain.UTF8String : "<none>",
+                error.code,
+                error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "<none>");
+    }];
     [cmd commit];
+    LOG_INFO("GE:R Metal TRACE present.committed");
     should_display = false;
     host_frames_presented.fetch_add(1, std::memory_order_relaxed);
 }
@@ -984,7 +1028,7 @@ bool create(MetalState &state, std::unique_ptr<Context> &context, MemState &mem)
 bool create(MetalState &state, std::unique_ptr<RenderTarget> &target,
     const SceGxmRenderTargetParams &params) {
     LOG_INFO("GE:R Metal TRACE render_target.create width={} height={} scenes={} scenes_per_frame={} flags={}",
-        params.width, params.height, params.scenes, params.scenes_per_frame, params.flags);
+        params.width, params.height, params.scenesPerFrame, params.flags);
     auto rt = std::make_unique<MetalRenderTarget>();
     rt->width = std::max<uint32_t>(1, static_cast<uint32_t>(params.width * state.res_multiplier));
     rt->height = std::max<uint32_t>(1, static_cast<uint32_t>(params.height * state.res_multiplier));
