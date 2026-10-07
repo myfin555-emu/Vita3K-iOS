@@ -25,20 +25,6 @@ endif()
 add_library(
 	renderer
 	STATIC
-	src/gl/attribute_formats.cpp
-	src/gl/color_formats.cpp
-	src/gl/compile_program.cpp
-	src/gl/draw.cpp
-	src/gl/fence.cpp
-	src/gl/renderer.cpp
-	src/gl/ring_buffer.cpp
-	src/gl/overlay_renderer.cpp
-	src/gl/screen_render.cpp
-	src/gl/surface_cache.cpp
-	src/gl/sync_state.cpp
-	src/gl/texture_formats.cpp
-	src/gl/texture.cpp
-	src/gl/uniforms.cpp
 
 	src/texture/cache.cpp
 	src/texture/format.cpp
