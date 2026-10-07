@@ -667,8 +667,15 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
                         report.machine = machine_name(machine);
                         report.elf_flags = hex_u64(flags, 8);
                         report.entry_point = hex_u64(entry, 8);
-                        report.program_headers = std::to_string(phnum) + " entries @ " + hex_u64(phoff, 8) +
-                            " (entry size " + std::to_string(phentsize) + ")";
+                        if (is_self && self_phdr_offset != std::string::npos) {
+                            report.program_headers =
+                                std::to_string(phnum) + " entries @ SELF " + hex_u64(self_phdr_offset, 8) +
+                                " (ELF e_phoff=" + hex_u64(phoff, 8) +
+                                ", entry size " + std::to_string(phentsize) + ")";
+                        } else {
+                            report.program_headers = std::to_string(phnum) + " entries @ " + hex_u64(phoff, 8) +
+                                " (entry size " + std::to_string(phentsize) + ")";
+                        }
                         report.sections = std::to_string(shnum) + " entries @ " + hex_u64(shoff, 8) +
                             " (entry size " + std::to_string(shentsize) + ")";
 
@@ -763,13 +770,18 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
 
     if (elf_offset != std::string::npos) {
         if (is_self) {
-            report.self_info = "SELF container bytes before embedded ELF: " + std::to_string(elf_offset) +
-                "; embedded ELF offset: " + hex_u64(elf_offset, 8) +
-                "; embedded ELF bytes: " + std::to_string(data.size() - elf_offset);
+            const std::string envelope_info =
+                "SELF envelope: bytesBeforeELF=" + std::to_string(elf_offset) +
+                " embeddedELFOffset=" + hex_u64(elf_offset, 8) +
+                " embeddedELFBytes=" + std::to_string(data.size() - elf_offset);
+            if (!report.self_info.empty())
+                report.self_info += "; " + envelope_info;
+            else
+                report.self_info = envelope_info;
             NativeLogger::write("analyzer: SELF envelope bytes=" + std::to_string(elf_offset) +
                                 " embedded ELF offset=" + std::to_string(elf_offset));
         }
-        collect_elf_details(data, elf_offset, report);
+        collect_elf_details(data, elf_offset, report, self_phdr_offset, self_segment_info_offset);
     }
 
     collect_api_strings(data, report.api_strings);
