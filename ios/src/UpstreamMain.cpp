@@ -616,6 +616,30 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
 
         init_libraries(*emuenv);
 
+        // GE:R was historically installed by the standalone native installer
+        // into Documents/PCSE00801. The playable runtime uses VitaFS, so bridge
+        // that existing user-owned install into ux0:app without copying the
+        // multi-gigabyte game. A symlink stays inside the app sandbox and keeps
+        // game data outside the IPA.
+#ifdef VITA3K_IOS_GER_ONLY
+        if (const char *home = std::getenv("HOME"); home != nullptr) {
+            const fs::path external_ger = fs::path(home) / "Documents/PCSE00801";
+            const fs::path vita_ger = emuenv->vita_fs_path / "ux0/app/PCSE00801";
+            boost::system::error_code link_error;
+            if (fs::exists(external_ger / "sce_sys/param.sfo", link_error)
+                && !link_error && !fs::exists(vita_ger, link_error) && !link_error) {
+                fs::create_directories(vita_ger.parent_path(), link_error);
+                if (!link_error) {
+                    ::symlink(external_ger.string().c_str(), vita_ger.string().c_str());
+                    if (errno == 0)
+                        LOG_INFO("GE:R: linked Documents/PCSE00801 into VitaFS at {}", vita_ger);
+                    else
+                        LOG_WARN("GE:R: could not link Documents/PCSE00801 into VitaFS: errno={}", errno);
+                }
+            }
+        }
+#endif
+
         if (!app::init_apps_list(*emuenv))
             LOG_ERROR("Failed to initialise apps list.");
 
