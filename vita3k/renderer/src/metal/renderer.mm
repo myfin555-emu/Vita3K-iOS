@@ -215,10 +215,10 @@ static void remap_msl_bindings(spirv_cross::CompilerMSL &compiler) {
 static std::pair<std::string, std::string> compile_shader(const SceGxmProgram &program,
     const std::string &hash, const FeatureState &features, const shader::Hints &hints,
     bool maskupdate) {
-    LOG_INFO("GE:R Metal TRACE shader.begin hash={} stage={} maskupdate={} spirv_target=OpenGL",
+    LOG_INFO("GE:R Metal TRACE shader.begin hash={} stage={} maskupdate={} spirv_target=Vulkan",
         hash, program.is_vertex() ? "vertex" : "fragment", maskupdate);
     const auto generated = shader::convert_gxp(program, hash, features,
-        shader::Target::SpirVOpenGL, hints, maskupdate);
+        shader::Target::SpirVVulkan, hints, maskupdate);
     LOG_INFO("GE:R Metal TRACE shader.spirv hash={} words={}", hash, generated.spirv.size());
     if (generated.spirv.empty()) {
         LOG_ERROR("GE:R Metal TRACE shader.fail hash={} reason=empty_spirv", hash);
@@ -550,7 +550,11 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     [enc setCullMode:cull_mode(record.cull_mode)];
     [enc setTriangleFillMode:fill_mode(record.front_polygon_mode)];
     [enc setFrontFacingWinding:MTLWindingCounterClockwise];
-    [enc setViewport:(MTLViewport){0, 0, static_cast<double>(render_target->width), static_cast<double>(render_target->height), 0, 1}];
+    [enc setViewport:(MTLViewport){
+        static_cast<double>(record.viewport_x), static_cast<double>(record.viewport_y),
+        static_cast<double>(record.viewport_width), static_cast<double>(record.viewport_height),
+        0.0, 1.0
+    }];
 
     for (size_t i = 0; i < record.vertex_streams.size(); ++i) {
         const auto &stream = record.vertex_streams[i];
@@ -570,7 +574,9 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
         }
     }
 
-    // Render-info buffers are bound to 2/3 for the OpenGL SPIR-V target.
+    // With Vulkan-semantics SPIR-V, render-info buffers are bindings 0/1 and
+    // the GXM user storage buffers are bindings 2/3. This matches the shader
+    // recompiler's descriptor layout and avoids the OpenGL clip-space path.
     shader::RenderVertUniformBlock vert_info{};
     vert_info.viewport_flip = record.viewport_flip;
     vert_info.viewport_flag = record.viewport_flat ? 1.0f : 0.0f;
@@ -612,11 +618,11 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
 
     auto vert_info_buffer = make_shared_buffer(state.device, vert_bytes.data(), vert_bytes.size());
     auto frag_info_buffer = make_shared_buffer(state.device, frag_bytes.data(), frag_bytes.size());
-    [enc setVertexBuffer:vert_info_buffer offset:0 atIndex:2];
-    [enc setFragmentBuffer:frag_info_buffer offset:0 atIndex:3];
+    [enc setVertexBuffer:vert_info_buffer offset:0 atIndex:0];
+    [enc setFragmentBuffer:frag_info_buffer offset:0 atIndex:1];
 
-    if (vertex_uniforms[0]) [enc setVertexBuffer:vertex_uniforms[0] offset:0 atIndex:0];
-    if (fragment_uniforms[0]) [enc setFragmentBuffer:fragment_uniforms[0] offset:0 atIndex:1];
+    if (vertex_uniforms[0]) [enc setVertexBuffer:vertex_uniforms[0] offset:0 atIndex:2];
+    if (fragment_uniforms[0]) [enc setFragmentBuffer:fragment_uniforms[0] offset:0 atIndex:3];
 
     const size_t index_size = index_type == SCE_GXM_INDEX_FORMAT_U16 ? sizeof(uint16_t) : sizeof(uint32_t);
     if (type == SCE_GXM_PRIMITIVE_TRIANGLE_FAN) {
@@ -1176,20 +1182,45 @@ void sync_texture(MetalContext &context, MemState &mem, size_t index,
     (void)config;
 }
 
-void sync_viewport_real(MetalContext &context, float, float, float zOffset,
-    float, float yScale, float zScale) {
+void sync_viewport_real(MetalContext &context, float xOffset, float yOffset, float zOffset,
+    float xScale, float yScale, float zScale) {
+    if (!context.render_target)
+        return;
+
+    if (xScale < 0.0f)
+        LOG_ERROR("GE:R Metal viewport has negative width: {}", xScale);
+
+    const float res = context.state.res_multiplier;
+    const float width = std::abs(2.0f * xScale) * res;
+    float height = (2.0f * yScale) * res;
+    float x = (xOffset - std::abs(xScale)) * res;
+    float y = (yOffset - yScale) * res;
+
+    // Vulkan permits a negative viewport height. Metal's viewport is expressed
+    // in top-left coordinates, so fold that flip into the origin and keep the
+    // submitted height positive.
+    if (height < 0.0f) {
+        y += height;
+        height = -height;
+    }
+
     context.record.viewport_flat = false;
-    context.record.viewport_flip[0] = 1.0f;
-    context.record.viewport_flip[1] = yScale < 0 ? -1.0f : 1.0f;
-    context.record.viewport_flip[2] = 1.0f;
-    context.record.viewport_flip[3] = 1.0f;
+    context.record.viewport_x = x;
+    context.record.viewport_y = y;
+    context.record.viewport_width = width;
+    context.record.viewport_height = height;
+    context.record.viewport_flip = {1.0f, 1.0f, 1.0f, 1.0f};
     context.record.z_offset = zOffset;
     context.record.z_scale = zScale;
 }
 
 void sync_viewport_flat(MetalContext &context) {
     context.record.viewport_flat = true;
-    context.record.viewport_flip = {1.0f, -1.0f, 1.0f, 1.0f};
+    context.record.viewport_x = 0.0f;
+    context.record.viewport_y = 0.0f;
+    context.record.viewport_width = static_cast<float>(context.render_target ? context.render_target->width : 0);
+    context.record.viewport_height = static_cast<float>(context.render_target ? context.render_target->height : 0);
+    context.record.viewport_flip = {1.0f, 1.0f, 1.0f, 1.0f};
     context.record.z_offset = 0.0f;
     context.record.z_scale = 1.0f;
 }

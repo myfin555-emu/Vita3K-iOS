@@ -137,6 +137,14 @@ struct GxmRecordState {
     SceGxmDepthStencilSurface depth_stencil_surface;
 
     bool viewport_flat = false;
+    // Native Metal uses the Vulkan/GXM viewport convention: origin is top-left
+    // and depth is [0, 1]. Keep the resolved viewport here so the Metal backend
+    // can use a Vulkan-semantics SPIR-V shader without doing an OpenGL clip-space
+    // conversion in the shader.
+    float viewport_x = 0.0f;
+    float viewport_y = 0.0f;
+    float viewport_width = static_cast<float>(DEFAULT_RES_WIDTH);
+    float viewport_height = static_cast<float>(DEFAULT_RES_HEIGHT);
     std::array<float, 4> viewport_flip = { 1.0f, 1.0f, 1.0f, 1.0f };
     float z_offset = 0.5f;
     float z_scale = 0.5f;
