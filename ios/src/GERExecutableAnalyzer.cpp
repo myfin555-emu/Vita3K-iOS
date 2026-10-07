@@ -98,11 +98,19 @@ bool starts_with(const std::vector<std::uint8_t> &data, std::initializer_list<st
 }
 
 void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_offset, ExecutableReport &report) {
-    if (elf_offset == std::string::npos || data.size() - elf_offset < 0x34)
+    const auto available = [&]() -> std::size_t {
+        return elf_offset <= data.size() ? data.size() - elf_offset : 0;
+    };
+    if (elf_offset == std::string::npos || available() < 0x34) {
+        NativeLogger::write("analyzer: deep ELF skipped: truncated ELF header");
         return;
+    }
+
     const auto *e = data.data() + elf_offset;
-    if (e[4] != 1 || e[5] != 1)
+    if (e[4] != 1 || e[5] != 1) {
+        NativeLogger::write("analyzer: deep ELF skipped: unsupported class/data");
         return;
+    }
 
     const std::uint32_t phoff = u32le(e + 0x1C);
     const std::uint32_t shoff = u32le(e + 0x20);
@@ -112,9 +120,71 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
     const std::uint16_t shnum = u16le(e + 0x30);
     const std::uint16_t shstrndx = u16le(e + 0x32);
 
-    if (shoff == 0 || shentsize < 0x28 || shnum == 0 ||
-        static_cast<std::uint64_t>(shoff) + static_cast<std::uint64_t>(shnum) * shentsize > data.size() - elf_offset)
+    NativeLogger::write("analyzer: ELF header phoff=" + hex_u64(phoff, 8) +
+                        " phentsize=" + std::to_string(phentsize) +
+                        " phnum=" + std::to_string(phnum) +
+                        " shoff=" + hex_u64(shoff, 8) +
+                        " shentsize=" + std::to_string(shentsize) +
+                        " shnum=" + std::to_string(shnum) +
+                        " shstrndx=" + std::to_string(shstrndx));
+
+    // Program headers are authoritative for loading even when a release ELF has
+    // no section table. Parse them independently from sections.
+    if (phnum != 0 && phentsize >= 0x20) {
+        const std::uint64_t ph_end = static_cast<std::uint64_t>(phoff) +
+            static_cast<std::uint64_t>(phnum) * phentsize;
+        if (phoff < available() && ph_end <= available()) {
+            std::ostringstream ph;
+            std::size_t valid = 0;
+            for (std::uint16_t i = 0; i < phnum; ++i) {
+                const auto *p = e + static_cast<std::uint64_t>(phoff) +
+                    static_cast<std::uint64_t>(i) * phentsize;
+                const auto type = u32le(p + 0x00);
+                const auto file_offset = u32le(p + 0x04);
+                const auto vaddr = u32le(p + 0x08);
+                const auto paddr = u32le(p + 0x0C);
+                const auto filesz = u32le(p + 0x10);
+                const auto memsz = u32le(p + 0x14);
+                const auto pflags = u32le(p + 0x18);
+                const auto align = u32le(p + 0x1C);
+                ph << "#" << i << " " << program_type_name(type)
+                   << " file=" << hex_u64(file_offset, 8)
+                   << " vaddr=" << hex_u64(vaddr, 8)
+                   << " paddr=" << hex_u64(paddr, 8)
+                   << " fileSize=" << hex_u64(filesz, 8)
+                   << " memSize=" << hex_u64(memsz, 8)
+                   << " flags=" << hex_u64(pflags, 2)
+                   << " align=" << hex_u64(align, 8) << "\n";
+                ++valid;
+            }
+            report.program_header_details = ph.str();
+            NativeLogger::write("analyzer: program headers parsed=" + std::to_string(valid));
+        } else {
+            NativeLogger::write("analyzer: program headers invalid/truncated");
+        }
+    } else {
+        NativeLogger::write("analyzer: no usable program header table");
+    }
+
+    if (shoff == 0 || shnum == 0) {
+        NativeLogger::write("analyzer: no section table (shoff/shnum empty); continuing with program headers");
         return;
+    }
+    if (shentsize < 0x28) {
+        NativeLogger::write("analyzer: section table rejected: shentsize=" + std::to_string(shentsize));
+        return;
+    }
+
+    const std::uint64_t sh_end = static_cast<std::uint64_t>(shoff) +
+        static_cast<std::uint64_t>(shnum) * shentsize;
+    if (shoff >= available() || sh_end > available()) {
+        NativeLogger::write("analyzer: section table rejected: outside embedded ELF");
+        return;
+    }
+    if (shstrndx >= shnum) {
+        NativeLogger::write("analyzer: section name table index invalid: " + std::to_string(shstrndx));
+        return;
+    }
 
     struct Section {
         std::uint32_t name = 0, type = 0, flags = 0, addr = 0, offset = 0, size = 0;
@@ -128,11 +198,11 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
         return e + static_cast<std::uint64_t>(shoff) + static_cast<std::uint64_t>(i) * shentsize;
     };
 
-    const auto *shstr = shstrndx < shnum ? section_at(shstrndx) : nullptr;
-    const std::uint32_t shstr_offset = shstr ? u32le(shstr + 0x10) : 0;
-    const std::uint32_t shstr_size = shstr ? u32le(shstr + 0x14) : 0;
+    const auto *shstr = section_at(shstrndx);
+    const std::uint32_t shstr_offset = u32le(shstr + 0x10);
+    const std::uint32_t shstr_size = u32le(shstr + 0x14);
     const char *shstr_data = nullptr;
-    if (shstr && static_cast<std::uint64_t>(shstr_offset) + shstr_size <= data.size() - elf_offset)
+    if (static_cast<std::uint64_t>(shstr_offset) + shstr_size <= available())
         shstr_data = reinterpret_cast<const char *>(e + shstr_offset);
 
     for (std::uint16_t i = 0; i < shnum; ++i) {
@@ -151,28 +221,42 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
         if (shstr_data && x.name < shstr_size) {
             const char *p = shstr_data + x.name;
             std::size_t n = 0;
-            while (x.name + n < shstr_size && p[n] != '\\0')
+            while (x.name + n < shstr_size && p[n] != '\0')
                 ++n;
             x.name_text.assign(p, n);
         }
         sections.emplace_back(std::move(x));
     }
 
+    std::ostringstream sh;
+    for (std::size_t i = 0; i < sections.size(); ++i) {
+        const auto &s = sections[i];
+        sh << "#" << i << " " << (s.name_text.empty() ? "<unnamed>" : s.name_text)
+           << " " << section_type_name(s.type)
+           << " addr=" << hex_u64(s.addr, 8)
+           << " file=" << hex_u64(s.offset, 8)
+           << " size=" << hex_u64(s.size, 8)
+           << " flags=" << hex_u64(s.flags, 8)
+           << " link=" << s.link << " info=" << s.info
+           << " entsize=" << s.entsize << "\n";
+    }
+    report.section_details = sh.str();
+
     auto safe_string = [&](const Section &strtab, std::uint32_t off) -> std::string {
-        if (strtab.type != 3 || static_cast<std::uint64_t>(strtab.offset) + strtab.size > data.size() - elf_offset || off >= strtab.size)
+        if (strtab.type != 3 || static_cast<std::uint64_t>(strtab.offset) + strtab.size > available() || off >= strtab.size)
             return {};
         const char *base = reinterpret_cast<const char *>(e + strtab.offset + off);
         std::size_t n = 0;
-        while (off + n < strtab.size && base[n] != '\\0')
+        while (off + n < strtab.size && base[n] != '\0')
             ++n;
         return std::string(base, n);
     };
 
     std::ostringstream dyn;
-    for (std::size_t i = 0; i < sections.size(); ++i) {
-        const auto &s = sections[i];
+    std::size_t dynamic_count = 0;
+    for (const auto &s : sections) {
         if (s.type != 6 || s.entsize < 8 || s.size == 0 ||
-            static_cast<std::uint64_t>(s.offset) + s.size > data.size() - elf_offset)
+            static_cast<std::uint64_t>(s.offset) + s.size > available())
             continue;
         const Section *strtab = s.link < sections.size() ? &sections[s.link] : nullptr;
         dyn << "Section " << (s.name_text.empty() ? "<dynamic>" : s.name_text) << "\n";
@@ -185,22 +269,22 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
             if (tag == 1 && strtab)
                 dyn << " name=" << safe_string(*strtab, value);
             dyn << "\n";
+            ++dynamic_count;
         }
     }
     report.dynamic_info = dyn.str();
 
     std::ostringstream symbols;
     std::size_t symbol_count = 0;
-    for (std::size_t i = 0; i < sections.size(); ++i) {
-        const auto &s = sections[i];
+    for (const auto &s : sections) {
         if ((s.type != 2 && s.type != 11) || s.entsize < 16 || s.size == 0 ||
-            static_cast<std::uint64_t>(s.offset) + s.size > data.size() - elf_offset)
+            static_cast<std::uint64_t>(s.offset) + s.size > available())
             continue;
         const Section *strtab = s.link < sections.size() ? &sections[s.link] : nullptr;
         const std::uint32_t count = s.size / s.entsize;
         symbols << "Section " << (s.name_text.empty() ? "<symbols>" : s.name_text)
                 << " count=" << count << "\n";
-        for (std::uint32_t n = 0; n < count; ++n) {
+        for (std::uint32_t n = 0; n < count && symbol_count < 2048; ++n) {
             const auto *sym = e + s.offset + static_cast<std::uint64_t>(n) * s.entsize;
             const std::uint32_t name = u32le(sym);
             const std::uint32_t value = u32le(sym + 4);
@@ -214,24 +298,22 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                     << " type=" << static_cast<unsigned>(info & 0xF)
                     << " shndx=" << shndx << "\n";
             ++symbol_count;
-            if (symbol_count >= 2048) {
-                symbols << "  ... symbol output capped at 2048 entries ...\n";
-                break;
-            }
         }
     }
+    if (symbol_count >= 2048)
+        symbols << "  ... symbol output capped at 2048 entries ...\n";
     report.symbol_details = symbols.str();
 
     std::ostringstream relocs;
     std::size_t relocation_count = 0;
     for (const auto &s : sections) {
         if ((s.type != 9 && s.type != 4) || s.entsize < 8 || s.size == 0 ||
-            static_cast<std::uint64_t>(s.offset) + s.size > data.size() - elf_offset)
+            static_cast<std::uint64_t>(s.offset) + s.size > available())
             continue;
         const std::uint32_t count = s.size / s.entsize;
         relocs << "Section " << (s.name_text.empty() ? "<relocation>" : s.name_text)
                << " type=" << section_type_name(s.type) << " count=" << count << "\n";
-        for (std::uint32_t n = 0; n < count; ++n) {
+        for (std::uint32_t n = 0; n < count && relocation_count < 4096; ++n) {
             const auto *r = e + s.offset + static_cast<std::uint64_t>(n) * s.entsize;
             const std::uint32_t offset = u32le(r);
             const std::uint32_t info = u32le(r + 4);
@@ -242,18 +324,16 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                 relocs << " addend=" << static_cast<std::int32_t>(u32le(r + 8));
             relocs << "\n";
             ++relocation_count;
-            if (relocation_count >= 4096) {
-                relocs << "  ... relocation output capped at 4096 entries ...\n";
-                break;
-            }
         }
     }
+    if (relocation_count >= 4096)
+        relocs << "  ... relocation output capped at 4096 entries ...\n";
     report.relocation_details = relocs.str();
 
     std::ostringstream notes;
     for (const auto &s : sections) {
         if (s.type != 7 || s.size == 0 ||
-            static_cast<std::uint64_t>(s.offset) + s.size > data.size() - elf_offset)
+            static_cast<std::uint64_t>(s.offset) + s.size > available())
             continue;
         notes << "Section " << (s.name_text.empty() ? "<note>" : s.name_text)
               << " size=" << s.size << " bytes\n";
@@ -273,7 +353,9 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
     }
     report.note_details = notes.str();
 
-    NativeLogger::write("analyzer: deep ELF details symbols=" + std::to_string(symbol_count) +
+    NativeLogger::write("analyzer: deep ELF details sections=" + std::to_string(sections.size()) +
+                        " dynamic=" + std::to_string(dynamic_count) +
+                        " symbols=" + std::to_string(symbol_count) +
                         " relocations=" + std::to_string(relocation_count));
 }
 
