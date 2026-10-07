@@ -212,10 +212,15 @@ static void remap_msl_bindings(spirv_cross::CompilerMSL &compiler) {
 static std::pair<std::string, std::string> compile_shader(const SceGxmProgram &program,
     const std::string &hash, const FeatureState &features, const shader::Hints &hints,
     bool maskupdate) {
+    LOG_INFO("GE:R Metal TRACE shader.begin hash={} stage={} maskupdate={} spirv_target=OpenGL",
+        hash, program.is_vertex() ? "vertex" : "fragment", maskupdate);
     const auto generated = shader::convert_gxp(program, hash, features,
         shader::Target::SpirVOpenGL, hints, maskupdate);
-    if (generated.spirv.empty())
+    LOG_INFO("GE:R Metal TRACE shader.spirv hash={} words={}", hash, generated.spirv.size());
+    if (generated.spirv.empty()) {
+        LOG_ERROR("GE:R Metal TRACE shader.fail hash={} reason=empty_spirv", hash);
         return {};
+    }
 
     spirv_cross::CompilerMSL compiler(generated.spirv);
     auto options = compiler.get_msl_options();
@@ -224,6 +229,12 @@ static std::pair<std::string, std::string> compile_shader(const SceGxmProgram &p
     options.force_active_argument_buffer_resources = false;
     compiler.set_msl_options(options);
     remap_msl_bindings(compiler);
+
+    auto resources = compiler.get_shader_resources();
+    LOG_INFO("GE:R Metal TRACE shader.resources hash={} sampled={} images={} samplers={} ubos={} ssbos={}",
+        hash, resources.sampled_images.size(), resources.separate_images.size(),
+        resources.separate_samplers.size(), resources.uniform_buffers.size(),
+        resources.storage_buffers.size());
 
     auto entries = compiler.get_entry_points_and_stages();
     std::string entry;
@@ -238,9 +249,11 @@ static std::pair<std::string, std::string> compile_shader(const SceGxmProgram &p
         entry = entries.front().name;
 
     try {
-        return { compiler.compile(), entry };
+        auto msl = compiler.compile();
+        LOG_INFO("GE:R Metal TRACE shader.msl hash={} entry={} bytes={}", hash, entry, msl.size());
+        return { std::move(msl), entry };
     } catch (const std::exception &e) {
-        LOG_ERROR("GE:R Metal shader translation failed for {}: {}", hash, e.what());
+        LOG_ERROR("GE:R Metal TRACE shader.msl.fail hash={} entry={} error={}", hash, entry, e.what());
         return {};
     }
 }
@@ -465,19 +478,33 @@ void MetalContext::set_texture(uint32_t index, const SceGxmTexture &, bool) {
 
 void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     Ptr<const void> indices, uint32_t count, uint32_t instance_count) {
-    if (!render_target || !record.vertex_program || !record.fragment_program || !count || !indices)
+    LOG_INFO("GE:R Metal TRACE draw.begin type={} index_type={} count={} instances={} rt={}x{} first_pass={} color_fmt={}",
+        static_cast<uint32_t>(type), static_cast<uint32_t>(index_type), count, instance_count,
+        render_target ? render_target->width : 0, render_target ? render_target->height : 0,
+        first_render_pass, static_cast<uint32_t>(record.color_surface.colorFormat));
+    if (!render_target || !record.vertex_program || !record.fragment_program || !count || !indices) {
+        LOG_ERROR("GE:R Metal TRACE draw.skip reason=missing_target_program_or_indices");
         return;
+    }
 
     const auto *vp = static_cast<const MetalVertexProgram *>(record.vertex_program.get(mem)->renderer_data.get());
     const auto *fp = static_cast<const MetalFragmentProgram *>(record.fragment_program.get(mem)->renderer_data.get());
     if (!vp || !fp) return;
 
     auto pipeline = pipeline_for_draw();
-    if (!pipeline) return;
+    if (!pipeline) {
+        LOG_ERROR("GE:R Metal TRACE draw.fail stage=pipeline");
+        return;
+    }
+    LOG_INFO("GE:R Metal TRACE draw.pipeline_ready");
 
     auto cmd = [state.command_queue commandBuffer];
-    if (!cmd) return;
+    if (!cmd) {
+        LOG_ERROR("GE:R Metal TRACE draw.fail stage=command_buffer_create");
+        return;
+    }
     command_buffer = cmd;
+    LOG_INFO("GE:R Metal TRACE command_buffer.created");
 
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = render_target->color;
@@ -493,8 +520,16 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     pass.stencilAttachment.storeAction = MTLStoreActionStore;
     pass.stencilAttachment.clearStencil = record.depth_stencil_surface.stencil;
 
+    LOG_INFO("GE:R Metal TRACE render_pass color={}x{} depth={} depth_load={} stencil_load={}",
+        render_target->width, render_target->height, render_target->depth != nil,
+        static_cast<uint32_t>(pass.depthAttachment.loadAction),
+        static_cast<uint32_t>(pass.stencilAttachment.loadAction));
     auto enc = [cmd renderCommandEncoderWithDescriptor:pass];
-    if (!enc) return;
+    if (!enc) {
+        LOG_ERROR("GE:R Metal TRACE draw.fail stage=encoder_create");
+        return;
+    }
+    LOG_INFO("GE:R Metal TRACE encoder.created");
     [enc setRenderPipelineState:pipeline];
     [enc setDepthStencilState:depth_state_for_draw()];
     [enc setCullMode:cull_mode(record.cull_mode)];
@@ -538,6 +573,9 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
 
     const uint16_t vertex_texture_count = vp->texture_count;
     const uint16_t fragment_texture_count = fp->texture_count;
+    LOG_INFO("GE:R Metal TRACE bindings textures vertex={} fragment={} vertex_uniform={} fragment_uniform={} vertex_streams={}",
+        vertex_texture_count, fragment_texture_count,
+        vertex_uniforms[0] != nil, fragment_uniforms[0] != nil, record.vertex_streams.size());
     const size_t vert_header = align(sizeof(vert_info), 8);
     const size_t frag_header = align(sizeof(frag_info), 8);
     const size_t vert_size = vert_header + vertex_texture_count * sizeof(float) * 4;
@@ -603,8 +641,23 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
             indexBuffer:index_buffer indexBufferOffset:0 instanceCount:std::max<uint32_t>(1, instance_count)];
     }
 
+    LOG_INFO("GE:R Metal TRACE draw.submit index_size={} primitive={} index_buffer={} instance_count={}",
+        index_size, static_cast<uint32_t>(type), index_buffer != nil, std::max<uint32_t>(1, instance_count));
     [enc endEncoding];
+    [cmd addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+        NSError *error = completed.error;
+        LOG_INFO("GE:R Metal TRACE command_buffer.completed status={} error={}",
+            static_cast<uint32_t>(completed.status),
+            error ? (error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "<no-description>") : "none");
+        if (error) {
+            LOG_ERROR("GE:R Metal GPU ERROR domain={} code={} desc={}",
+                error.domain.UTF8String ? error.domain.UTF8String : "<none>",
+                error.code,
+                error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "<none>");
+        }
+    }];
     [cmd commit];
+    LOG_INFO("GE:R Metal TRACE command_buffer.committed");
     first_render_pass = false;
 }
 
@@ -714,12 +767,31 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
         a.writeMask = mask;
     }
 
+    LOG_INFO("GE:R Metal TRACE pipeline.create key={} vp_hash={} fp_hash={} vp_entry={} fp_entry={} "
+             "attrs={} color_fmt={} depth_fmt={} stencil_fmt={} blend={}",
+        key, vp->hash, fp->hash, vp->entry, fp->entry, vp->attributes.size(),
+        static_cast<uint32_t>(d.colorAttachments[0].pixelFormat),
+        static_cast<uint32_t>(d.depthAttachmentPixelFormat),
+        static_cast<uint32_t>(d.stencilAttachmentPixelFormat),
+        d.colorAttachments[0].blendingEnabled);
+    for (const auto &a : vp->attributes) {
+        const auto it = vp->attribute_infos.find(a.regIndex);
+        LOG_INFO("GE:R Metal TRACE pipeline.attr reg={} location={} stream={} offset={} format={} count={} stride={}",
+            a.regIndex, it == vp->attribute_infos.end() ? 0 : it->second.location,
+            a.streamIndex, a.offset, static_cast<uint32_t>(a.format), a.componentCount,
+            a.streamIndex < strides.size() ? strides[a.streamIndex] : 0);
+    }
+
     NSError *error = nil;
     auto p = [state.device newRenderPipelineStateWithDescriptor:d error:&error];
     if (!p) {
-        LOG_ERROR("GE:R Metal pipeline creation failed: {}", error.localizedDescription.UTF8String);
+        LOG_ERROR("GE:R Metal TRACE pipeline.fail key={} error={}", key,
+            error && error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "<no-error>");
+        LOG_ERROR("GE:R Metal TRACE pipeline.msl.vertex={}", vp->msl);
+        LOG_ERROR("GE:R Metal TRACE pipeline.msl.fragment={}", fp->msl);
         return nil;
     }
+    LOG_INFO("GE:R Metal TRACE pipeline.ready key={}", key);
     pipelines[key] = p;
     return p;
 }
@@ -732,13 +804,21 @@ MetalState::MetalState()
 MetalState::~MetalState() = default;
 
 bool MetalState::init() {
+    LOG_INFO("GE:R Metal TRACE state.init.begin");
     device = MTLCreateSystemDefaultDevice();
     if (!device) {
         LOG_ERROR("GE:R Metal: no MTLDevice");
         return false;
     }
+    LOG_INFO("GE:R Metal TRACE device name={} registry_id={} low_power={} headless={} recommended_max_working_set={}",
+        device.name.UTF8String ? device.name.UTF8String : "<unknown>",
+        device.registryID, device.isLowPower, device.isHeadless,
+        static_cast<unsigned long long>(device.recommendedMaxWorkingSetSize));
     command_queue = [device newCommandQueue];
-    if (!command_queue) return false;
+    if (!command_queue) {
+        LOG_ERROR("GE:R Metal TRACE state.init.fail reason=command_queue");
+        return false;
+    }
 
     if (frame) {
         auto handle = frame->handle();
@@ -754,6 +834,9 @@ bool MetalState::init() {
     layer.device = device;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     layer.framebufferOnly = NO;
+    LOG_INFO("GE:R Metal TRACE state.init.ready pixel_format={} framebuffer_only={} device={}",
+        static_cast<uint32_t>(layer.pixelFormat), layer.framebufferOnly,
+        device.name.UTF8String ? device.name.UTF8String : "<unknown>");
     return true;
 }
 
@@ -900,6 +983,8 @@ bool create(MetalState &state, std::unique_ptr<Context> &context, MemState &mem)
 
 bool create(MetalState &state, std::unique_ptr<RenderTarget> &target,
     const SceGxmRenderTargetParams &params) {
+    LOG_INFO("GE:R Metal TRACE render_target.create width={} height={} scenes={} scenes_per_frame={} flags={}",
+        params.width, params.height, params.scenes, params.scenes_per_frame, params.flags);
     auto rt = std::make_unique<MetalRenderTarget>();
     rt->width = std::max<uint32_t>(1, static_cast<uint32_t>(params.width * state.res_multiplier));
     rt->height = std::max<uint32_t>(1, static_cast<uint32_t>(params.height * state.res_multiplier));
@@ -916,6 +1001,10 @@ bool create(MetalState &state, std::unique_ptr<RenderTarget> &target,
     dd.storageMode = MTLStorageModePrivate;
     rt->depth = [state.device newTextureWithDescriptor:dd];
     const bool ok = rt->color && rt->depth;
+    LOG_INFO("GE:R Metal TRACE render_target.ready size={}x{} color={} depth={} color_fmt={} depth_fmt={}",
+        rt->width, rt->height, rt->color != nil, rt->depth != nil,
+        rt->color ? static_cast<uint32_t>(rt->color.pixelFormat) : 0,
+        rt->depth ? static_cast<uint32_t>(rt->depth.pixelFormat) : 0);
     target = std::move(rt);
     return ok;
 }
