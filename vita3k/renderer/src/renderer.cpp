@@ -268,7 +268,7 @@ void destroy_render_target_during_shutdown(State &state, std::unique_ptr<RenderT
 
     switch (state.current_backend) {
     case Backend::Metal:
-        metal::destroy(dynamic_cast<metal::MetalState &>(state), rt);
+        metal::destroy(static_cast<metal::MetalState &>(state), rt);
         break;
     }
 
