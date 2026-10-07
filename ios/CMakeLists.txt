@@ -15,9 +15,18 @@ if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE AND NO
 endif()
 
 if(VITA3K_IOS_GER_ONLY)
+    add_library(ger_native_miniz STATIC
+        ${CMAKE_SOURCE_DIR}/external/miniz/miniz.c
+        ${CMAKE_SOURCE_DIR}/external/miniz/miniz.h
+    )
+    target_include_directories(ger_native_miniz PUBLIC
+        ${CMAKE_SOURCE_DIR}/external/miniz
+    )
+
     add_executable(Vita3KiOS MACOSX_BUNDLE
         src/GERNativeMain.mm
         src/GERNativeAppDelegate.mm
+        src/GERNativeInstaller.mm
         src/GERNativeRuntime.cpp
         src/GERNativeRenderer.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets
@@ -33,6 +42,7 @@ if(VITA3K_IOS_GER_ONLY)
         VITA3K_PLATFORM_IOS=1
         GER_NATIVE_RUNTIME=1)
     target_link_libraries(Vita3KiOS PRIVATE
+        ger_native_miniz
         "-framework CoreGraphics"
         "-framework Foundation"
         "-framework GameController"
