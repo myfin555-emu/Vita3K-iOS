@@ -224,6 +224,17 @@ bool NativeExecutableLoader::load(const std::filesystem::path &self_path, Native
             return false;
         }
         image.entry = static_cast<std::uint32_t>(candidate);
+        bool resolved = false;
+        for (const auto &seg : image.segments) {
+            if (seg.type == kPtLoad && image.entry >= seg.vaddr && image.entry < seg.vaddr + seg.memsz) {
+                resolved = true;
+                break;
+            }
+        }
+        if (!resolved) {
+            error = "ELF entry RVA does not resolve into a PT_LOAD";
+            return false;
+        }
     }
 
     // Decode every SCE_RELA program segment. Vita uses packed 8-byte short
