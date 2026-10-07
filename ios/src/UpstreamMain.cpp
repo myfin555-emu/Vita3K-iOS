@@ -2396,7 +2396,7 @@ std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
     constexpr std::array<std::string_view, 4> kGERTitleIds = {
         "PCSG00719", "PCSE00801", "PCSB00874", "PCSH00199"
     };
-    games.erase(std::remove_if(games.begin(), games.end(), [](const auto &game) {
+    games.erase(std::remove_if(games.begin(), games.end(), [&kGERTitleIds](const auto &game) {
         return std::find(kGERTitleIds.begin(), kGERTitleIds.end(), game.title_id) == kGERTitleIds.end();
     }), games.end());
     LOG_INFO("GE:R-only frontend: {} supported title(s) visible", games.size());
