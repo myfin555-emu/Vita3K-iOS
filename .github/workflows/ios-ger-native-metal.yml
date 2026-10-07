@@ -144,6 +144,8 @@ jobs:
         run: |
           app="build-ios-ger-metal/ios/Release-iphoneos/GodEaterResurrection.app"
           mv "$app/GodEaterResurrection" "$app/Vita3K-iOS"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Vita3K-iOS" "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$app/Info.plist" | grep -Fx "Vita3K-iOS"
           mv "$app" "build-ios-ger-metal/ios/Release-iphoneos/Vita3K-iOS.app"
 
       - name: Package and verify unsigned GE:R IPA
@@ -159,6 +161,7 @@ jobs:
           /usr/bin/unzip -l artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa | grep -F "Payload/Vita3K-iOS.app/Vita3K-iOS"
           /usr/bin/unzip -p artifacts/GodEaterResurrection-NativeMetal-iOS-unsigned.ipa Payload/Vita3K-iOS.app/Info.plist > artifacts/ger-info.plist
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" artifacts/ger-info.plist | grep -Fx "org.vita3k.ger.native"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" artifacts/ger-info.plist | grep -Fx "Vita3K-iOS"
 
       - name: Upload unsigned GE:R Native Metal IPA
         uses: actions/upload-artifact@v4
