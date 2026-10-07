@@ -124,7 +124,7 @@ COMMAND(handle_destroy_render_target) {
 
     switch (renderer.current_backend) {
     case Backend::Metal:
-        metal::destroy(dynamic_cast<metal::MetalState &>(renderer), *render_target);
+        metal::destroy(static_cast<metal::MetalState &>(renderer), *render_target);
         break;
 
     default:
