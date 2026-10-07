@@ -45,7 +45,7 @@ code += (
     '}\n'
 )
 assignments = re.findall(r'(?:current|desired)\.disable_surface_sync = [^;]+;', source)
-assert len(assignments) == 3, assignments
+assert len(assignments) == 4, assignments
 for i, assignment in enumerate(assignments):
     code += f'bool save_sync_{i}(const Vita3KIOSSettings &settings) {{ Config current, desired; ' + assignment + ' return ' + assignment.split(' = ')[0] + '; }\n'
 code += r'''
