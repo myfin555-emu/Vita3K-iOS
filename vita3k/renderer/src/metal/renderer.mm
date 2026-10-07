@@ -761,8 +761,13 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
         d.vertexDescriptor.attributes[location].bufferIndex = 4 + a.streamIndex;
         strides[a.streamIndex] = std::max<NSUInteger>(strides[a.streamIndex], a.offset + attribute_size(a.format, a.componentCount));
     }
-    for (size_t i = 0; i < strides.size(); ++i)
-        d.vertexDescriptor.layouts[4 + i].stride = strides[i] ? strides[i] : 4;
+    for (size_t i = 0; i < strides.size(); ++i) {
+        if (!strides[i])
+            continue;
+        d.vertexDescriptor.layouts[4 + i].stride = strides[i];
+        d.vertexDescriptor.layouts[4 + i].stepFunction = MTLVertexStepFunctionPerVertex;
+        d.vertexDescriptor.layouts[4 + i].stepRate = 1;
+    }
     if (fp->has_blend && !record.is_maskupdate) {
         auto a = d.colorAttachments[0];
         a.blendingEnabled = fp->blend.colorFunc != SCE_GXM_BLEND_FUNC_NONE || fp->blend.alphaFunc != SCE_GXM_BLEND_FUNC_NONE;
@@ -796,6 +801,8 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
             a.streamIndex < strides.size() ? strides[a.streamIndex] : 0);
     }
 
+    LOG_INFO("GE:R Metal TRACE pipeline.preflight vertex_function={} fragment_function={} vertex_descriptor={}",
+        vp->function != nil, fp->function != nil, d.vertexDescriptor != nil);
     NSError *error = nil;
     auto p = [state.device newRenderPipelineStateWithDescriptor:d error:&error];
     if (!p) {
