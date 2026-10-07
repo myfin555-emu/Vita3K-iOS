@@ -7,7 +7,9 @@
 #import <vita3k_ios/GERNativeRenderer.h>
 #import <vita3k_ios/GERNativeRuntime.h>
 
+#include <array>
 #include <filesystem>
+#include <system_error>
 #include <string>
 
 @interface GERNativeViewController : UIViewController <UIDocumentPickerDelegate>
