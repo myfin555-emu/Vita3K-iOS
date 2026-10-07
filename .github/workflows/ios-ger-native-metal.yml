@@ -1,27 +1,10 @@
 name: Build GE:R Native Metal iOS IPA
 
 on:
+  # This workflow is intentionally manual. The GE:R Metal branch is validated
+  # only after the renderer dependency audit is complete, rather than burning
+  # an Actions run for every intermediate compiler fix.
   workflow_dispatch:
-  push:
-    branches:
-      - ios/ger-native-metal-isolated
-    paths:
-      - "CMakeLists.txt"
-      - "vcpkg.json"
-      - "ios/**"
-      - "vita3k/**"
-      - "external/**"
-      - ".ci/package-ios.sh"
-      - ".github/workflows/ios-ger-native-metal.yml"
-  pull_request:
-    paths:
-      - "CMakeLists.txt"
-      - "vcpkg.json"
-      - "ios/**"
-      - "vita3k/**"
-      - "external/**"
-      - ".ci/package-ios.sh"
-      - ".github/workflows/ios-ger-native-metal.yml"
 
 permissions:
   contents: read
