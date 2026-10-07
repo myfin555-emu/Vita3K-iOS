@@ -3,7 +3,7 @@
 #import <SDL3/SDL_metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
-#include <SPIRV-Cross/spirv_msl.hpp>
+#include <spirv_msl.hpp>
 
 #include <config/state.h>
 #include <display/state.h>
