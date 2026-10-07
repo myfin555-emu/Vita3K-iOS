@@ -185,6 +185,7 @@ bool enough_space(const fs::path &documents, std::uint64_t bytes, std::string &e
 }
 
 InstallResult fail_result(std::string message) {
+    NativeLogger::write("installer: failure: " + message);
     InstallResult result;
     result.message = std::move(message);
     return result;
@@ -217,6 +218,7 @@ InstallResult replace_transactionally(const fs::path &temporary,
     fs::remove_all(backup, ec);
     result.success = true;
     result.install_root = destination;
+    NativeLogger::write("installer: installation committed to " + destination.string());
     return result;
 }
 
@@ -233,6 +235,7 @@ fs::path NativeInstaller::game_root() {
 }
 
 bool NativeInstaller::ensure_storage(std::string &error) {
+    NativeLogger::write("installer: ensure storage");
     const auto documents = documents_root();
     if (documents.empty()) {
         error = "iOS Documents directory is unavailable.";
@@ -252,6 +255,7 @@ InstallResult NativeInstaller::install_folder(
     const fs::path &selected_path,
     const fs::path &game_source,
     const InstallProgress &progress) {
+    NativeLogger::write("installer: folder import source=" + game_source.string());
     const auto root = locate_game_root(game_source);
     if (root.empty())
         return fail_result("The selected location does not contain a complete PCSE00801 game folder (sce_sys/param.sfo + eboot.bin).");
@@ -318,6 +322,7 @@ InstallResult NativeInstaller::install_archive(
     const fs::path &archive_path,
     const InstallProgress &progress) {
     mz_zip_archive zip{};
+    NativeLogger::write("installer: archive import source=" + archive_path.string());
     const auto archiveText = archive_path.string();
     if (!mz_zip_reader_init_file(&zip, archiveText.c_str(), 0))
         return fail_result("Could not open the selected ZIP/VPK archive.");
