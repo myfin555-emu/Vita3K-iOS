@@ -913,7 +913,7 @@ bool create(MetalState &state, std::unique_ptr<RenderTarget> &target,
     dd.storageMode = MTLStorageModePrivate;
     rt->depth = [state.device newTextureWithDescriptor:dd];
     target = std::move(rt);
-    return target->get() != nullptr;
+    return target && target->color && target->depth;
 }
 
 void destroy(MetalState &, std::unique_ptr<RenderTarget> &target) {
