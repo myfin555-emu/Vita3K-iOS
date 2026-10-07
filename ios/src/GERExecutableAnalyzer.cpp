@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -63,7 +64,7 @@ void collect_api_strings(const std::vector<std::uint8_t> &data, std::vector<std:
     static constexpr std::array<const char *, 20> needles = {
         "sceKernel", "sceIo", "sceGxm", "sceAudio", "sceCtrl",
         "sceTouch", "sceDisplay", "sceAppMgr", "sceCommonDialog",
-        "sceSysmodule", "sceNet", "sceHttp", "sceHttp",
+        "sceSysmodule", "sceNet", "sceHttp",
         "sceFios", "scePvf", "sceMotion", "sceRtc",
         "sceLibc", "sceClib", "sceKernelAllocMemBlock"
     };
@@ -135,11 +136,9 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
 
     std::size_t elf_offset = is_elf ? 0 : std::string::npos;
     if (!is_elf) {
-        const auto it = std::search(
-            data.begin() + std::min<std::size_t>(data.size(), 4),
-            data.end(),
-            std::array<std::uint8_t, 4>{0x7F, 0x45, 0x4C, 0x46}.begin(),
-            std::array<std::uint8_t, 4>{0x7F, 0x45, 0x4C, 0x46}.end());
+        static constexpr std::array<std::uint8_t, 4> elf_magic = {0x7F, 0x45, 0x4C, 0x46};
+        const auto begin = data.begin() + std::min<std::size_t>(data.size(), 4);
+        const auto it = std::search(begin, data.end(), elf_magic.begin(), elf_magic.end());
         if (it != data.end())
             elf_offset = static_cast<std::size_t>(std::distance(data.begin(), it));
     }
