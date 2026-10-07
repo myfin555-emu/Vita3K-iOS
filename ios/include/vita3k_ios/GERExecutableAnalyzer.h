@@ -21,6 +21,11 @@ struct ExecutableReport {
     std::string sections;
     std::string section_details;
     std::string embedded_elf;
+    std::string self_info;
+    std::string dynamic_info;
+    std::string symbol_details;
+    std::string relocation_details;
+    std::string note_details;
     std::vector<std::string> api_strings;
     std::string message;
 };
