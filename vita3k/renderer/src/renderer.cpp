@@ -26,11 +26,6 @@
 #include <overlay/pause_overlay.h>
 #include <overlay/perf_overlay.h>
 #include <overlay/shader_compile_notice.h>
-#include <renderer/gl/state.h>
-#include <renderer/gl/types.h>
-#ifndef VITA3K_IOS_GER_ONLY
-#include <renderer/vulkan/functions.h>
-#endif
 #include <renderer/metal/state.h>
 
 #include <gxm/functions.h>
@@ -276,16 +271,6 @@ void destroy_render_target_during_shutdown(State &state, std::unique_ptr<RenderT
         return;
 
     switch (state.current_backend) {
-    case Backend::OpenGL:
-        state.set_current();
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::destroy(dynamic_cast<vulkan::VKState &>(state), rt);
-#endif
-        break;
-
     case Backend::Metal:
         metal::destroy(dynamic_cast<metal::MetalState &>(state), rt);
         break;
