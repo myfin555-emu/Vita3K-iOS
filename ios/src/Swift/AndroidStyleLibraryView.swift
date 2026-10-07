@@ -83,7 +83,7 @@ struct AndroidStyleLibraryView: View {
                 description: Text("Tap + to import a game")
             )
         } else if visibleGames.isEmpty {
-            ContentUnavailableView.search(text: searchText)
+            VStack(spacing: 10) {\n                Image(systemName: "magnifyingglass").font(.largeTitle).foregroundStyle(.secondary)\n                Text("No games found").font(.headline)\n                Text("No installed game matches “\\(searchText)”.").foregroundStyle(.secondary)\n            }\n            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if library.isListMode {
             List {
                 ForEach(visibleGames) { game in
