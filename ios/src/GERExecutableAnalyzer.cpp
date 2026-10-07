@@ -46,6 +46,8 @@ std::string machine_name(std::uint16_t machine) {
     }
 }
 
+std::string hex_u64(std::uint64_t value, unsigned width);
+
 std::string program_type_name(std::uint32_t type) {
     switch (type) {
     case 0: return "NULL";
