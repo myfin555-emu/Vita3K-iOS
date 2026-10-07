@@ -22,12 +22,7 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 
-#include <renderer/gl/functions.h>
-#include <renderer/gl/types.h>
 
-#ifndef VITA3K_IOS_GER_ONLY
-#include <renderer/vulkan/functions.h>
-#endif
 #include <renderer/metal/state.h>
 
 #include <config/state.h>
@@ -82,16 +77,6 @@ COMMAND(handle_set_context) {
     destroy_command_payload(*helper.cmd);
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::set_context(dynamic_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context), mem, reinterpret_cast<const gl::GLRenderTarget *>(rt), features);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::set_context(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, reinterpret_cast<vulkan::VKRenderTarget *>(rt), features);
-#endif
-        break;
-
     case Backend::Metal:
         reinterpret_cast<metal::MetalContext *>(render_context)->set_context(
             dynamic_cast<metal::MetalRenderTarget *>(rt));
@@ -136,11 +121,6 @@ COMMAND(handle_sync_surface_data) {
         signal_notifications();
 
 #ifndef VITA3K_IOS_GER_ONLY
-    if (renderer.current_backend == Backend::Vulkan) {
-        vulkan::VKContext *context = reinterpret_cast<vulkan::VKContext *>(render_context);
-        if (context->is_recording)
-            context->stop_recording(vertex_notification, fragment_notification);
-    }
 #endif
 
     SceGxmColorSurface *surface = &render_context->record.color_surface;
@@ -178,17 +158,6 @@ COMMAND(handle_sync_surface_data) {
     const std::size_t total_size = height * gxm::get_stride_in_bytes(surface->colorFormat, stride_in_pixels);
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        if (helper.cmd->status) {
-            gl::lookup_and_get_surface_data(static_cast<gl::GLState &>(renderer), mem, *surface);
-        } else {
-            gl::get_surface_data(static_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context), pixels, *surface);
-        }
-        break;
-
-    case Backend::Vulkan:
-        break;
-
     case Backend::Metal:
         reinterpret_cast<metal::MetalContext *>(render_context)->sync_surface(vertex_notification, fragment_notification);
         were_notifications_signaled = true;
@@ -230,11 +199,6 @@ COMMAND(handle_mid_scene_flush) {
     }
 
     const SceGxmNotification notification = helper.pop<SceGxmNotification>();
-    if (renderer.current_backend == Backend::Vulkan) {
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::mid_scene_flush(*reinterpret_cast<vulkan::VKContext *>(render_context), notification);
-#endif
-    }
 }
 
 COMMAND(handle_draw) {
@@ -246,18 +210,6 @@ COMMAND(handle_draw) {
     const std::uint32_t instance_count = helper.pop<const std::uint32_t>();
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::draw(dynamic_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context),
-            features, type, format, indices.cast<void>().get(mem), count, instance_count, mem, config);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::draw(*reinterpret_cast<vulkan::VKContext *>(render_context), type, format, indices.cast<void>(),
-            count, instance_count, mem, config);
-#endif
-        break;
-
     case Backend::Metal:
         reinterpret_cast<metal::MetalContext *>(render_context)->draw(type, format, indices, count, instance_count);
         break;
