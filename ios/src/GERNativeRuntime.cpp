@@ -27,8 +27,6 @@ bool directory(const fs::path &path) {
 }
 
 std::string read_param_title_id(const fs::path &param) {
-    // param.sfo is intentionally only used as an identity hint here.
-    // The authoritative GE:R install identifier remains PCSE00801.
     std::ifstream stream(param, std::ios::binary);
     if (!stream)
         return {};
@@ -41,6 +39,16 @@ std::string read_param_title_id(const fs::path &param) {
     for (std::size_t i = 0; i + needle.size() <= count; ++i) {
         if (std::equal(needle.begin(), needle.end(), bytes.begin() + i))
             return needle;
+    }
+    return {};
+}
+
+fs::path find_eboot(const fs::path &root) {
+    const std::array<const char *, 3> eboots = {"eboot.bin", "EBOOT.BIN", "eboot.bin.self"};
+    for (const auto *name : eboots) {
+        const auto path = root / name;
+        if (regular_file(path))
+            return path;
     }
     return {};
 }
@@ -66,15 +74,7 @@ GameInstall inspect_game(const fs::path &root) {
     game.title_id = kTitleId;
     game.has_sce_sys = directory(root / "sce_sys");
     game.has_param_sfo = regular_file(root / "sce_sys/param.sfo");
-
-    const std::array<const char *, 3> eboots = {"eboot.bin", "EBOOT.BIN", "eboot.bin.self"};
-    for (const auto *name : eboots) {
-        if (regular_file(root / name)) {
-            game.has_eboot = true;
-            break;
-        }
-    }
-
+    game.has_eboot = !find_eboot(root).empty();
     return game;
 }
 
@@ -95,7 +95,8 @@ RuntimeStatus NativeRuntime::scan() {
             continue;
 
         status_.game = std::move(game);
-        const bool identity_ok = status_.game.title_id == kTitleId;
+        const auto param_id = read_param_title_id(status_.game.root / "sce_sys/param.sfo");
+        const bool identity_ok = param_id.empty() || param_id == kTitleId;
         status_.ready = identity_ok && status_.game.has_param_sfo && status_.game.has_eboot;
 
         if (status_.ready) {
@@ -103,8 +104,13 @@ RuntimeStatus NativeRuntime::scan() {
         } else {
             status_.message =
                 "GE:R data directory found, but sce_sys/param.sfo and eboot.bin are required.";
+            if (!param_id.empty() && param_id != kTitleId)
+                status_.message += " param.sfo title ID is not PCSE00801.";
         }
-        NativeLogger::write("runtime: selected root=" + status_.game.root.string() + " ready=" + std::string(status_.ready ? "yes" : "no"));
+
+        NativeLogger::write(
+            "runtime: selected root=" + status_.game.root.string() +
+            " ready=" + std::string(status_.ready ? "yes" : "no"));
         return status_;
     }
 
@@ -123,11 +129,41 @@ bool NativeRuntime::start(std::string &error) {
         return false;
     }
 
-    // Deliberately no Vita CPU/GXM interpreter is started here.
-    // This runtime owns a native game loop; GE:R game-system implementations
-    // are added here as they are recovered/reimplemented.
+    const auto eboot = find_eboot(status_.game.root);
+    if (eboot.empty()) {
+        error = "GE:R executable disappeared after scan.";
+        return false;
+    }
+
+    NativeExecutableImage image;
+    std::string loader_error;
+    if (!executable_loader_.load(eboot, image, loader_error)) {
+        status_.executable_loaded = false;
+        status_.loader_message = loader_error;
+        status_.message = "GE:R data found, but native executable image loading failed: " + loader_error;
+        error = status_.message;
+        NativeLogger::write("runtime: loader failed: " + loader_error);
+        return false;
+    }
+
+    status_.executable = std::move(image);
+    status_.executable_loaded = true;
+    status_.loader_message =
+        "ARM32 image prepared; entry=0x" + [&] {
+            std::ostringstream out;
+            out << std::hex << status_.executable.entry;
+            return out.str();
+        }() +
+        " relocations=" + std::to_string(status_.executable.relocations.size()) +
+        " applied=" + std::to_string(status_.executable.relocations_applied) +
+        " unsupported=" + std::to_string(status_.executable.relocations_unsupported);
+
+    // This is intentionally an image-construction boundary, not a claim that
+    // iOS can execute the Vita ARM32 image directly. Native ARM64 execution
+    // still requires the recovered/reimplemented GE:R runtime and ARM64 code.
     elapsed_ = 0.0;
     running_ = true;
+    NativeLogger::write("runtime: executable image prepared; native ARM64 execution layer not yet attached");
     return true;
 }
 
