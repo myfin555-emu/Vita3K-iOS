@@ -8,6 +8,7 @@ option(VITA3K_IOS_GER_ONLY "Build the iOS frontend as a God Eater Resurrection-o
 option(VITA3K_IOS_GER_METAL_FOUNDATION "Compile the isolated GE:R native Metal renderer foundation" OFF)
 if(VITA3K_IOS_GER_ONLY)
     set(VITA3K_IOS_GER_METAL_FOUNDATION ON CACHE BOOL "Enable GE:R native Metal renderer" FORCE)
+    set(VITA3K_IOS_BUNDLE_ID "org.vita3k.ger.a11" CACHE STRING "Application bundle identifier" FORCE)
 endif()
 
 if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
@@ -63,7 +64,6 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
         # The option is a CMake variable; these sources consume it as a
         # preprocessor macro to select the Metal-only GE:R path.
         target_compile_definitions(Vita3KiOS PRIVATE VITA3K_IOS_GER_ONLY=1)
-        target_compile_definitions(app PRIVATE VITA3K_IOS_GER_ONLY=1)
     endif()
     # Swift <-> Objective-C bridging.
     #   * The bridging header is what Swift sees: it exposes ONLY
@@ -149,8 +149,7 @@ endif()
 
 if(VITA3K_IOS_GER_ONLY)
     set_target_properties(Vita3KiOS PROPERTIES
-        OUTPUT_NAME "GodEaterResurrection"
-        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.vita3k.ger.a11")
+        OUTPUT_NAME "GodEaterResurrection")
 else()
     set_target_properties(Vita3KiOS PROPERTIES
         OUTPUT_NAME "Vita3K-iOS")
