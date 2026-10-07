@@ -118,11 +118,12 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
         return;
     }
 
+    const std::uint16_t elf_type = u16le(e + 0x10);
     const std::uint32_t entry = u32le(e + 0x18);
     const std::uint32_t phoff = u32le(e + 0x1C);
     const std::uint32_t shoff = u32le(e + 0x20);
     report.entry_point = hex_u64(entry, 8);
-    NativeLogger::write("analyzer: ELF entry=" + report.entry_point);
+    NativeLogger::write("analyzer: ELF type=" + hex_u64(elf_type, 4) + " entry=" + report.entry_point);
     const std::uint16_t phentsize = u16le(e + 0x2A);
     const std::uint16_t phnum = u16le(e + 0x2C);
     const std::uint16_t shentsize = u16le(e + 0x2E);
@@ -198,13 +199,13 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                         const auto *s = data.data() + si;
                         const auto raw_offset = u64le(s);
                         const auto raw_size = u64le(s + 8);
-                        const auto compressed = u32le(s + 16);
-                        const auto plaintext = u32le(s + 24);
+                        const auto compression = u32le(s + 16);
+                        const auto encryption = u32le(s + 24);
                         const bool raw_ok = raw_offset <= data.size() && raw_size <= data.size() - raw_offset;
                         ph << " selfOffset=" << hex_u64(raw_offset, 8)
                            << " selfSize=" << hex_u64(raw_size, 8)
-                           << " compressed=" << compressed
-                           << " plaintext=" << plaintext
+                           << " compression=" << compression
+                           << " encryption=" << encryption
                            << " selfRange=" << (raw_ok ? "valid" : "INVALID");
                     }
                 }
@@ -244,8 +245,13 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                         const std::uint64_t raw_size = u64le(data.data() + si + 8);
                         if (raw_offset <= data.size() &&
                             raw_size >= delta + size &&
-                            raw_size <= data.size() - raw_offset)
-                            return static_cast<std::size_t>(raw_offset + delta);
+                            raw_size <= data.size() - raw_offset) {
+                            // SegmentInfo: compression=1 is uncompressed and
+                            // encryption=2 is plaintext. Only that combination
+                            // can be mapped directly from raw SELF bytes.
+                            if (compression == 1 && encryption == 2)
+                                return static_cast<std::size_t>(raw_offset + delta);
+                        }
                     }
                 }
                 if (static_cast<std::uint64_t>(p.file_offset) + delta + size <= available())
@@ -255,12 +261,31 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
         return std::string::npos;
     };
 
-    const auto entry_file = va_to_file(entry);
+    auto entry_file = va_to_file(entry);
     if (entry_file != std::string::npos) {
-        NativeLogger::write("analyzer: entry VA " + report.entry_point +
+        NativeLogger::write("analyzer: entry " + report.entry_point +
                             " maps to embedded ELF file offset " + hex_u64(entry_file, 8));
     } else {
-        NativeLogger::write("analyzer: entry VA " + report.entry_point + " has no PT_LOAD file mapping");
+        // Vita application executables commonly encode e_entry as an RVA
+        // relative to the module load base. Resolve that form only after the
+        // literal virtual-address mapping fails.
+        for (const auto &p : programs) {
+            if (p.type != 1 || p.filesz == 0)
+                continue;
+            const std::uint64_t candidate = static_cast<std::uint64_t>(p.vaddr) + entry;
+            if (candidate > std::numeric_limits<std::uint32_t>::max())
+                continue;
+            const auto mapped = va_to_file(static_cast<std::uint32_t>(candidate));
+            if (mapped != std::string::npos) {
+                NativeLogger::write("analyzer: entry RVA " + report.entry_point +
+                                    " resolves to module VA " + hex_u64(candidate, 8) +
+                                    " at embedded ELF file offset " + hex_u64(mapped, 8));
+                entry_file = mapped;
+                break;
+            }
+        }
+        if (entry_file == std::string::npos)
+            NativeLogger::write("analyzer: entry " + report.entry_point + " has no PT_LOAD mapping (literal or module-relative)");
     }
 
     // Parse PT_DYNAMIC directly. Section headers are intentionally not required.
