@@ -15,6 +15,7 @@
 @implementation GERNativeRenderer {
     std::unique_ptr<ger::ios::NativeRuntime> _runtime;
     std::chrono::steady_clock::time_point _lastTick;
+    BOOL _started;
 }
 
 - (instancetype)initWithView:(MTKView *)view {
@@ -25,25 +26,36 @@
         _queue = [_device newCommandQueue];
         _runtime = std::make_unique<ger::ios::NativeRuntime>();
         _lastTick = std::chrono::steady_clock::now();
+        _started = NO;
+
         view.delegate = self;
         view.enableSetNeedsDisplay = NO;
-        view.paused = NO;
+        view.paused = YES;
         view.preferredFramesPerSecond = 60;
     }
     return self;
 }
 
 - (void)start {
+    if (_started || !_runtime)
+        return;
+
+    _started = YES;
     std::string error;
     if (!_runtime->start(error)) {
         _runtime->scan();
-        return;
     }
+
     _lastTick = std::chrono::steady_clock::now();
+
+    if (_view) {
+        _view.paused = NO;
+    }
 }
 
 - (void)drawInMTKView:(MTKView *)view {
-    if (!_queue || !view.currentDrawable || !view.currentRenderPassDescriptor)
+    if (!_started || !_device || !_queue || !view.currentDrawable ||
+        !view.currentRenderPassDescriptor)
         return;
 
     const auto now = std::chrono::steady_clock::now();
