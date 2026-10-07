@@ -112,8 +112,11 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
         return;
     }
 
+    const std::uint32_t entry = u32le(e + 0x18);
     const std::uint32_t phoff = u32le(e + 0x1C);
     const std::uint32_t shoff = u32le(e + 0x20);
+    report.entry_point = hex_u64(entry, 8);
+    NativeLogger::write("analyzer: ELF entry=" + report.entry_point);
     const std::uint16_t phentsize = u16le(e + 0x2A);
     const std::uint16_t phnum = u16le(e + 0x2C);
     const std::uint16_t shentsize = u16le(e + 0x2E);
@@ -159,6 +162,7 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
             }
             report.program_header_details = ph.str();
             NativeLogger::write("analyzer: program headers parsed=" + std::to_string(valid));
+            NativeLogger::write("analyzer: program header detail dump:\n" + report.program_header_details);
         } else {
             NativeLogger::write("analyzer: program headers invalid/truncated");
         }
