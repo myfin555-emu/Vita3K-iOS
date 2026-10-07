@@ -54,7 +54,7 @@ COMMAND(handle_create_context) {
 
     switch (renderer.current_backend) {
     case Backend::Metal: {
-        result = metal::create(dynamic_cast<metal::MetalState &>(renderer), *ctx, mem);
+        result = metal::create(static_cast<metal::MetalState &>(renderer), *ctx, mem);
         break;
     }
 
@@ -96,7 +96,7 @@ COMMAND(handle_create_render_target) {
 
     switch (renderer.current_backend) {
     case Backend::Metal:
-        result = metal::create(dynamic_cast<metal::MetalState &>(renderer), *render_target, *params);
+        result = metal::create(static_cast<metal::MetalState &>(renderer), *render_target, *params);
         break;
 
     default:
@@ -143,7 +143,7 @@ COMMAND(handle_memory_map) {
     const uint32_t size = helper.pop<uint32_t>();
 
     if (renderer.current_backend == Backend::Metal) {
-        dynamic_cast<metal::MetalState &>(renderer).map_memory(mem, addr, size);
+        static_cast<metal::MetalState &>(renderer).map_memory(mem, addr, size);
     }
 
     complete_command(renderer, helper, 0);
@@ -155,7 +155,7 @@ COMMAND(handle_memory_unmap) {
     const Ptr<void> addr = helper.pop<Ptr<void>>();
 
     if (renderer.current_backend == Backend::Metal) {
-        dynamic_cast<metal::MetalState &>(renderer).unmap_memory(mem, addr);
+        static_cast<metal::MetalState &>(renderer).unmap_memory(mem, addr);
     }
 
     complete_command(renderer, helper, 0);
@@ -165,7 +165,7 @@ COMMAND(handle_memory_unmap) {
 bool create(std::unique_ptr<FragmentProgram> &fp, State &state, const SceGxmProgram &program, const SceGxmBlendInfo *blend, GXPPtrMap &gxp_ptr_map) {
     switch (state.current_backend) {
     case Backend::Metal:
-        if (!metal::create(fp, dynamic_cast<metal::MetalState &>(state), program, blend))
+        if (!metal::create(fp, static_cast<metal::MetalState &>(state), program, blend))
             return false;
         break;
 
@@ -189,7 +189,7 @@ bool create(std::unique_ptr<FragmentProgram> &fp, State &state, const SceGxmProg
 bool create(std::unique_ptr<VertexProgram> &vp, State &state, const SceGxmProgram &program, GXPPtrMap &gxp_ptr_map, const std::vector<SceGxmVertexAttribute> &attributes) {
     switch (state.current_backend) {
     case Backend::Metal:
-        if (!metal::create(vp, dynamic_cast<metal::MetalState &>(state), program, attributes))
+        if (!metal::create(vp, static_cast<metal::MetalState &>(state), program, attributes))
             return false;
         break;
 
