@@ -260,7 +260,9 @@
         return;
 
     BOOL scoped = [url startAccessingSecurityScopedResource];
-    if (!scoped && ![url.path hasPrefix:ger::ios::NativeInstaller::documents_root().string().c_str()]) {
+    const auto documentsPath = ger::ios::NativeInstaller::documents_root().string();
+    NSString *documentsPrefix = [NSString stringWithUTF8String:documentsPath.c_str()];
+    if (!scoped && ![url.path hasPrefix:documentsPrefix]) {
         [self showImportError:@"iOS did not grant GER Native access to the selected file/folder."];
         return;
     }
