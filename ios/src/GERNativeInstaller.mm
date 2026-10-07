@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 
 #include <vita3k_ios/GERNativeInstaller.h>
+#include <vita3k_ios/GERNativeLogger.h>
 
 #include <miniz.h>
 
