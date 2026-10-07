@@ -3,6 +3,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import <vita3k_ios/GERExecutableAnalyzer.h>
+#import <vita3k_ios/GERNativeLogger.h>
 #import <vita3k_ios/GERNativeInstaller.h>
 #import <vita3k_ios/GERNativeRenderer.h>
 #import <vita3k_ios/GERNativeRuntime.h>
@@ -41,7 +42,10 @@
     [super viewDidLoad];
 
     std::string storageError;
-    ger::ios::NativeInstaller::ensure_storage(storageError);
+    ger::ios::NativeLogger::ensure_storage();
+    ger::ios::NativeLogger::write("app: viewDidLoad");
+    if (!ger::ios::NativeInstaller::ensure_storage(storageError))
+        ger::ios::NativeLogger::write("app: ensure game storage failed: " + storageError);
 
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     if (!device) {
@@ -200,6 +204,7 @@
 
 - (void)refreshGameStatus {
     const auto status = _runtime.scan();
+    ger::ios::NativeLogger::write("app: refresh status ready=" + std::string(status.ready ? "yes" : "no") + " message=" + status.message);
 
     self.statusLabel.text = [NSString stringWithUTF8String:status.message.c_str()];
 
@@ -236,6 +241,7 @@
         return;
 
     const auto status = _runtime.scan();
+    ger::ios::NativeLogger::write("app: analyze requested ready=" + std::string(status.ready ? "yes" : "no"));
     if (!status.ready || status.game.root.empty()) {
         [self showImportError:@"Install a complete PCSE00801 game first. The analyzer requires sce_sys/param.sfo and eboot.bin."];
         return;
@@ -257,7 +263,9 @@
         return;
     }
 
+    ger::ios::NativeLogger::write("app: analyzing executable " + executable.string());
     const auto report = ger::ios::analyze_executable(executable);
+    ger::ios::NativeLogger::write("app: analyzer returned readable=" + std::string(report.readable ? "yes" : "no") + " format=" + report.format);
     if (!report.readable) {
         [self showImportError:[NSString stringWithUTF8String:report.message.c_str()]];
         return;
