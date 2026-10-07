@@ -128,6 +128,10 @@ struct MetalState final : renderer::State {
     id<MTLRenderPipelineState> present_pipeline = nil;
     id<MTLSamplerState> present_sampler = nil;
     id<MTLTexture> present_texture = nil;
+    // The Metal render target that was last synchronized to the Vita display surface.
+    // Keep it as the native presentation source so iOS does not round-trip the final
+    // frame through guest RAM before presenting it again.
+    id<MTLTexture> present_source_texture = nil;
 
     explicit MetalState();
     ~MetalState() override;
