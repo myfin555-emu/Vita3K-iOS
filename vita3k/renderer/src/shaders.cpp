@@ -18,10 +18,6 @@
 #include <renderer/shaders.h>
 #include <renderer/spirv_cache.h>
 
-#ifndef VITA3K_IOS_GER_ONLY
-#include <renderer/vulkan/state.h>
-#endif
-
 #include <gxm/types.h>
 #include <renderer/state.h>
 #include <renderer/types.h>
@@ -35,7 +31,7 @@
 namespace renderer {
 
 bool get_shaders_cache_hashs(State &renderer) {
-    const std::string hash_file_name = fmt::format("hashs-{}.dat", (renderer.current_backend == Backend::OpenGL) ? "gl" : "vk");
+    const std::string hash_file_name = fmt::format("hashs-{}.dat", "metal");
 
     fs::ifstream shaders_hashs(renderer.shaders_path / hash_file_name, std::ios::in | std::ios::binary);
     if (!shaders_hashs.is_open())
@@ -61,13 +57,6 @@ bool get_shaders_cache_hashs(State &renderer) {
             LOG_WARN("Incompatible GPU features enabled, recreating shader cache");
         return false;
     }
-
-#ifndef VITA3K_IOS_GER_ONLY
-    if (renderer.current_backend == Backend::Vulkan) {
-        // Read the pipeline cache
-        dynamic_cast<vulkan::VKState &>(renderer).pipeline_cache.read_pipeline_cache();
-    }
-#endif
 
     // Read Hashs info value
     for (size_t a = 0; a < size; a++) {
