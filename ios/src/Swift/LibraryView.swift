@@ -20,6 +20,17 @@ struct LibraryView: View {
     /// Live Area sheet target and a launch deferred until that sheet closes.
     @State private var liveAreaTarget: GameEntry?
     @State private var pendingLiveAreaLaunch: GameEntry?
+    @State private var searchText = ""
+    @State private var searchPresented = false
+
+    private var visibleGames: [GameEntry] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return library.orderedGames }
+        return library.orderedGames.filter {
+            $0.displayTitle.localizedCaseInsensitiveContains(query)
+                || $0.titleID.localizedCaseInsensitiveContains(query)
+        }
+    }
 
     /// The carousel is the landscape presentation of grid mode. List mode
     /// stays a list in both orientations.
@@ -61,6 +72,50 @@ struct LibraryView: View {
                         }
                     }
                     .toolbar { toolbarContent }
+                    .searchable(text: $searchText, isPresented: $searchPresented, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search games")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                searchPresented = true
+                            } label: {
+                                Image(systemName: "magnifyingglass")
+                            }
+                            .accessibilityLabel("Search games")
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Menu {
+                                Button {
+                                    library.setSortOption(rawValue: LibrarySortOption.alphabetical.rawValue)
+                                } label: {
+                                    Label("Sort alphabetically", systemImage: "textformat.abc")
+                                }
+                                Button {
+                                    library.setSortOption(rawValue: LibrarySortOption.recentlyPlayed.rawValue)
+                                } label: {
+                                    Label("Sort by recently played", systemImage: "clock.arrow.circlepath")
+                                }
+                                Button {
+                                    library.setSortOption(rawValue: LibrarySortOption.playtime.rawValue)
+                                } label: {
+                                    Label("Sort by playtime", systemImage: "timer")
+                                }
+                                Divider()
+                                Button {
+                                    Bridge.refreshLibrary()
+                                } label: {
+                                    Label("Refresh library", systemImage: "arrow.clockwise")
+                                }
+                                Button {
+                                    Bridge.openBugReportForm()
+                                } label: {
+                                    Label("Report a bug", systemImage: "exclamationmark.bubble")
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                            .accessibilityLabel("Library actions")
+                        }
+                    }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         LibraryJITBanner(library: library)
                     }
@@ -130,6 +185,16 @@ struct LibraryView: View {
                 .frame(maxWidth: .infinity, minHeight: 420)
             }
             .refreshable { await refresh() }
+        } else if visibleGames.isEmpty {
+            ScrollView {
+                VStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass").font(.largeTitle).foregroundStyle(.secondary)
+                    Text("No games found").font(.headline)
+                    Text("No installed game matches “\\(searchText)”.")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 420)
+            }
         } else if #available(iOS 17.0, *), showsCarousel {
             carouselContent
         } else if library.isListMode {
@@ -155,7 +220,7 @@ struct LibraryView: View {
         GeometryReader { proxy in
             ScrollView(.vertical) {
                 CoverCarousel(
-                    games: library.orderedGames,
+                    games: visibleGames,
                     dimmed: !library.firmwareReady,
                     padFocusedTitleID: carouselFocus,
                     stepAccumulator: library.carouselStepAccumulator,
@@ -189,7 +254,7 @@ struct LibraryView: View {
         // ScrollViewReader so the pad can bring its focused row into view;
         // List's own scrolling has no other way to be driven programmatically.
         ScrollViewReader { scroller in
-            List(library.orderedGames) { game in
+            List(visibleGames) { game in
                 listRow(game)
                     // Tighter insets in compact mode so the smaller rows pack
                     // closer together, which is the point of the density.
@@ -234,7 +299,7 @@ struct LibraryView: View {
     private var gridScroll: some View {
         ScrollView {
             LazyVGrid(columns: Self.gridColumns, spacing: 18) {
-                ForEach(library.orderedGames) { game in
+                ForEach(visibleGames) { game in
                     gridCell(game)
                 }
             }
