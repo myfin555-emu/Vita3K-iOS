@@ -42,13 +42,9 @@ COMMAND(handle_signal_sync_object) {
     SceGxmSyncObject *sync = helper.pop<Ptr<SceGxmSyncObject>>().get(mem);
     const uint32_t timestamp = helper.pop<uint32_t>();
 
-    if (features.can_surface_sync() && config.current_config.high_accuracy) {
-#ifndef VITA3K_IOS_GER_ONLY
-#endif
-        // Native Metal does not use Vulkan's queue/timestamp tracking.
-        // Surface synchronization is completed by MetalContext::sync_surface,
-        // so ordinary GXM sync objects use the common CPU-side completion path.
-    }
+    // Native Metal does not use Vulkan's queue/timestamp tracking.
+    // Surface synchronization is completed by MetalContext::sync_surface,
+    // so ordinary GXM sync objects use the common CPU-side completion path.
     renderer::subject_done(sync, timestamp);
 }
 
