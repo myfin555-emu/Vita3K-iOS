@@ -259,7 +259,9 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
                                 if (strtab && name_offset < str_size) {
                                     const char *begin = strtab + name_offset;
                                     const std::size_t max = str_size - name_offset;
-                                    const std::size_t length = std::strnlen(begin, max);
+                                    std::size_t length = 0;
+                                    while (length < max && begin[length] != '\\0')
+                                        ++length;
                                     name.assign(begin, length);
                                 }
                                 sh << "#" << i << " " << (name.empty() ? "<unnamed>" : name)
@@ -303,7 +305,8 @@ ExecutableReport analyze_executable(const std::filesystem::path &path) {
 
     collect_api_strings(data, report.api_strings);
     NativeLogger::write("analyzer: API string scan complete, matches=" + std::to_string(report.api_strings.size()));
-    NativeLogger::write("analyzer: complete format=" + report.format + " arch=" + report.architecture);
+    NativeLogger::write("analyzer: ELF machine=" + report.machine + " flags=" + report.elf_flags);
+    NativeLogger::write("analyzer: complete format=" + report.format + " arch=" + report.architecture + " machine=" + report.machine);
     return report;
 }
 
