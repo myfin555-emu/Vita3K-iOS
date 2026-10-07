@@ -28,6 +28,7 @@ if(VITA3K_IOS_GER_ONLY)
         src/GERNativeAppDelegate.mm
         src/GERNativeInstaller.mm
         src/GERExecutableAnalyzer.cpp
+        src/GERNativeLogger.cpp
         src/GERNativeRuntime.cpp
         src/GERNativeRenderer.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets
