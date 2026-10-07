@@ -779,9 +779,10 @@ id<MTLRenderPipelineState> MetalContext::pipeline_for_draw() {
         a.writeMask = mask;
     }
 
-    LOG_INFO("GE:R Metal TRACE pipeline.create key={} vp_hash={} fp_hash={} vp_entry={} fp_entry={} "
+    LOG_INFO("GE:R Metal TRACE pipeline.create key={} vp={} fp={} vp_entry={} fp_entry={} "
              "attrs={} color_fmt={} depth_fmt={} stencil_fmt={} blend={}",
-        key, vp->hash, fp->hash, vp->entry, fp->entry, vp->attributes.size(),
+        key, static_cast<const void *>(vp), static_cast<const void *>(fp),
+        vp->entry, fp->entry, vp->attributes.size(),
         static_cast<uint32_t>(d.colorAttachments[0].pixelFormat),
         static_cast<uint32_t>(d.depthAttachmentPixelFormat),
         static_cast<uint32_t>(d.stencilAttachmentPixelFormat),
