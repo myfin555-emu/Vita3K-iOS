@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 
 option(VITA3K_BUILD_IOS "Build the experimental iOS bootstrap application" OFF)
 option(VITA3K_BUILD_IOS_UPSTREAM_CORE "Build the upstream Vita3K core for iOS" OFF)
+option(VITA3K_IOS_GER_ONLY "Build the iOS frontend as a God Eater Resurrection-only appliance" OFF)
+option(VITA3K_IOS_GER_METAL_FOUNDATION "Compile the isolated GE:R native Metal renderer foundation" OFF)
 option(VITA3K_ENABLE_LTO "Enable link-time optimization when supported" ON)
 
 # Set the minimum before project()/toolchain initialization so every target agrees.
