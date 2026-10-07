@@ -21,20 +21,8 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 
-#include <renderer/gl/functions.h>
-#include <renderer/gl/state.h>
-#include <renderer/gl/types.h>
 
-#ifndef VITA3K_IOS_GER_ONLY
-#include <renderer/vulkan/functions.h>
-#endif
 #include <renderer/metal/state.h>
-#ifndef VITA3K_IOS_GER_ONLY
-#include <renderer/vulkan/state.h>
-#endif
-#ifndef VITA3K_IOS_GER_ONLY
-#include <renderer/vulkan/types.h>
-#endif
 
 #include <util/align.h>
 #include <util/log.h>
@@ -68,16 +56,6 @@ COMMAND_SET_STATE(region_clip) {
     render_context->record.region_clip_max.y = static_cast<SceInt>(align(yMax, SCE_GXM_TILE_SIZEY)) - 1;
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_clipping(static_cast<gl::GLState &>(renderer), *static_cast<gl::GLContext *>(render_context));
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_clipping(*static_cast<vulkan::VKContext *>(render_context));
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -99,13 +77,6 @@ COMMAND_SET_STATE(program) {
         render_context->record.is_maskupdate = gxm_program->is_maskupdate;
 
         switch (renderer.current_backend) {
-        case Backend::OpenGL:
-            gl::sync_blending(render_context->record, mem);
-            break;
-
-        case Backend::Vulkan:
-            break;
-
         case Backend::Metal:
             break;
 
@@ -119,11 +90,6 @@ COMMAND_SET_STATE(program) {
         render_context->record.vertex_program_hash = gxm_program->renderer_data->hash;
     }
 
-    if (renderer.current_backend == Backend::Vulkan) {
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-    }
 }
 
 COMMAND_SET_STATE(uniform_buffer) {
@@ -137,16 +103,6 @@ COMMAND_SET_STATE(uniform_buffer) {
                                                  : reinterpret_cast<ShaderProgram *>(render_context->record.fragment_program.get(mem)->renderer_data.get());
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::set_uniform_buffer(*reinterpret_cast<gl::GLContext *>(render_context), program, is_vertex, block_num, size, data.get(mem));
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::set_uniform_buffer(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, program, is_vertex, block_num, size, data);
-#endif
-        break;
-
     case Backend::Metal:
         reinterpret_cast<metal::MetalContext *>(render_context)->set_uniform(is_vertex, block_num, size, data.cast<const void>());
         break;
@@ -200,89 +156,6 @@ COMMAND_SET_STATE(viewport) {
         render_context->record.z_scale = zScale;
 
         switch (renderer.current_backend) {
-        case Backend::OpenGL:
-            gl::sync_viewport_real(static_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context), xOffset, yOffset, zOffset, xScale, yScale, zScale);
-            break;
-
-        case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-            vulkan::sync_viewport_real(*reinterpret_cast<vulkan::VKContext *>(render_context), xOffset, yOffset, zOffset, xScale, yScale, zScale);
-#endif
-            break;
-
-        default:
-            REPORT_MISSING(renderer.current_backend);
-            break;
-        }
-    } else {
-        render_context->record.viewport_flip[0] = 1.0f;
-        render_context->record.viewport_flip[1] = -1.0f;
-        render_context->record.viewport_flip[2] = 1.0f;
-        render_context->record.viewport_flip[3] = 1.0f;
-        render_context->record.z_offset = 0.0f;
-        render_context->record.z_scale = 1.0f;
-
-        switch (renderer.current_backend) {
-        case Backend::OpenGL:
-            gl::sync_viewport_flat(static_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context));
-            break;
-
-        case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-            vulkan::sync_viewport_flat(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-            break;
-
-        default:
-            REPORT_MISSING(renderer.current_backend);
-            break;
-        }
-    }
-
-    if (previous_flip_y != render_context->record.viewport_flip[1]) {
-        switch (renderer.current_backend) {
-        case Backend::OpenGL:
-            // We need to sync again state that uses the flip
-            gl::sync_cull(render_context->record);
-            gl::sync_clipping(static_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context));
-            break;
-
-        case Backend::Vulkan:
-            // We need to sync again state that uses the flip
-#ifndef VITA3K_IOS_GER_ONLY
-            vulkan::sync_clipping(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-            break;
-
-        default:
-            REPORT_MISSING(renderer.current_backend);
-            break;
-        }
-    }
-}
-
-COMMAND_SET_STATE(depth_bias) {
-    TRACY_FUNC_COMMANDS_SET_STATE(depth_bias);
-    const bool is_front = helper.pop<bool>();
-    const int factor = helper.pop<int>();
-    const int unit = helper.pop<int>();
-
-    render_context->record.depth_bias_unit = unit;
-    render_context->record.depth_bias_slope = factor;
-
-    switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        if (is_front)
-            gl::sync_depth_bias(factor, unit, is_front);
-        break;
-
-    case Backend::Vulkan:
-        if (is_front)
-#ifndef VITA3K_IOS_GER_ONLY
-            vulkan::sync_depth_bias(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -304,16 +177,6 @@ COMMAND_SET_STATE(depth_func) {
     }
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_depth_func(depth_func, is_front);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -334,16 +197,6 @@ COMMAND_SET_STATE(depth_write_enable) {
         render_context->record.back_depth_write_mode = mode;
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_depth_write_enable(mode, is_front);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -363,16 +216,6 @@ COMMAND_SET_STATE(polygon_mode) {
         render_context->record.back_polygon_mode = mode;
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_polygon_mode(mode, is_front);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -390,16 +233,6 @@ COMMAND_SET_STATE(point_line_width) {
         render_context->record.line_width = width;
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_point_line_width(static_cast<gl::GLState &>(renderer), width, is_front);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_point_line_width(*reinterpret_cast<vulkan::VKContext *>(render_context), is_front);
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -435,19 +268,6 @@ COMMAND_SET_STATE(stencil_func) {
     }
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_stencil_func(stencil_state_op, stencil_state_vals, mem, !is_front);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(dynamic_cast<vulkan::VKContext &>(*render_context));
-#endif
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), !is_front);
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -468,16 +288,6 @@ COMMAND_SET_STATE(stencil_ref) {
     stencil_state_vals.ref = sref;
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_stencil_func(stencil_state_op, stencil_state_vals, mem, !is_front);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), !is_front);
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -493,18 +303,6 @@ COMMAND_SET_STATE(texture) {
     SceGxmTexture texture = helper.pop<SceGxmTexture>();
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_texture(dynamic_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context), mem, texture_index, texture,
-            config);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_texture(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, texture_index, texture,
-            config);
-#endif
-        break;
-
     case Backend::Metal:
         metal::sync_texture(*reinterpret_cast<metal::MetalContext *>(render_context), mem, texture_index, texture, config);
         break;
@@ -521,23 +319,6 @@ COMMAND_SET_STATE(two_sided) {
     render_context->record.two_sided = two_sided;
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        // TODO: something should be done here
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), false);
-#endif
-        // this second call is useless if two_sided is disabled
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_stencil_func(dynamic_cast<vulkan::VKContext &>(*render_context), true);
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -552,16 +333,6 @@ COMMAND_SET_STATE(cull_mode) {
     render_context->record.cull_mode = helper.pop<SceGxmCullMode>();
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::sync_cull(render_context->record);
-        break;
-
-    case Backend::Vulkan:
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-        break;
-
     case Backend::Metal:
         break;
 
@@ -592,11 +363,6 @@ COMMAND_SET_STATE(fragment_program_enable) {
     else
         render_context->record.back_side_fragment_program_mode = mode;
 
-    if (renderer.current_backend == Backend::Vulkan) {
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::refresh_pipeline(*reinterpret_cast<vulkan::VKContext *>(render_context));
-#endif
-    }
 }
 
 COMMAND_SET_STATE(visibility_buffer) {
@@ -604,11 +370,6 @@ COMMAND_SET_STATE(visibility_buffer) {
     const Ptr<uint32_t> buffer = helper.pop<Ptr<uint32_t>>();
     const uint32_t stride = helper.pop<uint32_t>();
 
-    if (renderer.current_backend == Backend::Vulkan) {
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_visibility_buffer(*reinterpret_cast<vulkan::VKContext *>(render_context), buffer, stride);
-#endif
-    }
 }
 
 COMMAND_SET_STATE(visibility_index) {
@@ -617,11 +378,6 @@ COMMAND_SET_STATE(visibility_index) {
     const bool enable = helper.pop<bool>();
     const bool is_increment = helper.pop<bool>();
 
-    if (renderer.current_backend == Backend::Vulkan) {
-#ifndef VITA3K_IOS_GER_ONLY
-        vulkan::sync_visibility_index(*reinterpret_cast<vulkan::VKContext *>(render_context), enable, index, is_increment);
-#endif
-    }
 }
 
 COMMAND(handle_set_state) {
