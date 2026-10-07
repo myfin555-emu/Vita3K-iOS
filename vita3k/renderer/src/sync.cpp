@@ -23,8 +23,6 @@
 #include <renderer/types.h>
 
 #include <display/state.h>
-#ifndef VITA3K_IOS_GER_ONLY
-#endif
 
 #include <renderer/functions.h>
 #include <util/tracy.h>
@@ -97,9 +95,6 @@ COMMAND(new_frame) {
             renderer.should_display = true;
     }
 
-#ifndef VITA3K_IOS_GER_ONLY
-    }
-#endif
 }
 
 // Client side function
@@ -111,10 +106,6 @@ void finish(State &state, Context *context) {
     if (state.render_abort.load(std::memory_order_relaxed))
         return;
 
-    // Wait for the VK wait thread to finish processing all pending requests.
-    // Push a callback request on the queue and wait for it to be treated
-#ifndef VITA3K_IOS_GER_ONLY
-#endif
 }
 
 int wait_for_status(State &state, int *status, int signal, bool wake_on_equal) {
