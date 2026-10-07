@@ -131,6 +131,18 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                         " shnum=" + std::to_string(shnum) +
                         " shstrndx=" + std::to_string(shstrndx));
 
+    struct ProgramHeader {
+        std::uint32_t type = 0;
+        std::uint32_t file_offset = 0;
+        std::uint32_t vaddr = 0;
+        std::uint32_t paddr = 0;
+        std::uint32_t filesz = 0;
+        std::uint32_t memsz = 0;
+        std::uint32_t flags = 0;
+        std::uint32_t align = 0;
+    };
+    std::vector<ProgramHeader> programs;
+
     // Program headers are authoritative for loading even when a release ELF has
     // no section table. Parse them independently from sections.
     if (phnum != 0 && phentsize >= 0x20) {
@@ -142,22 +154,31 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
             for (std::uint16_t i = 0; i < phnum; ++i) {
                 const auto *p = e + static_cast<std::uint64_t>(phoff) +
                     static_cast<std::uint64_t>(i) * phentsize;
-                const auto type = u32le(p + 0x00);
-                const auto file_offset = u32le(p + 0x04);
-                const auto vaddr = u32le(p + 0x08);
-                const auto paddr = u32le(p + 0x0C);
-                const auto filesz = u32le(p + 0x10);
-                const auto memsz = u32le(p + 0x14);
-                const auto pflags = u32le(p + 0x18);
-                const auto align = u32le(p + 0x1C);
-                ph << "#" << i << " " << program_type_name(type)
-                   << " file=" << hex_u64(file_offset, 8)
-                   << " vaddr=" << hex_u64(vaddr, 8)
-                   << " paddr=" << hex_u64(paddr, 8)
-                   << " fileSize=" << hex_u64(filesz, 8)
-                   << " memSize=" << hex_u64(memsz, 8)
-                   << " flags=" << hex_u64(pflags, 2)
-                   << " align=" << hex_u64(align, 8) << "\n";
+                ProgramHeader x;
+                x.type = u32le(p + 0x00);
+                x.file_offset = u32le(p + 0x04);
+                x.vaddr = u32le(p + 0x08);
+                x.paddr = u32le(p + 0x0C);
+                x.filesz = u32le(p + 0x10);
+                x.memsz = u32le(p + 0x14);
+                x.flags = u32le(p + 0x18);
+                x.align = u32le(p + 0x1C);
+                programs.emplace_back(x);
+
+                const bool file_range_ok =
+                    static_cast<std::uint64_t>(x.file_offset) + x.filesz <= available();
+                const char *perm = (x.flags & 0x1) ? ((x.flags & 0x2) ? "RWX" : ((x.flags & 0x4) ? "RX" : "X"))
+                                                   : ((x.flags & 0x2) ? "RW" : "R");
+                ph << "#" << i << " " << program_type_name(x.type)
+                   << " file=" << hex_u64(x.file_offset, 8)
+                   << " vaddr=" << hex_u64(x.vaddr, 8)
+                   << " paddr=" << hex_u64(x.paddr, 8)
+                   << " fileSize=" << hex_u64(x.filesz, 8)
+                   << " memSize=" << hex_u64(x.memsz, 8)
+                   << " flags=" << hex_u64(x.flags, 2)
+                   << " perm=" << perm
+                   << " align=" << hex_u64(x.align, 8)
+                   << " range=" << (file_range_ok ? "valid" : "INVALID") << "\n";
                 ++valid;
             }
             report.program_header_details = ph.str();
@@ -170,8 +191,100 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
         NativeLogger::write("analyzer: no usable program header table");
     }
 
+    // Resolve a virtual address through PT_LOAD. This is the key path for a
+    // stripped Vita ELF because dynamic/symbol information can survive only as
+    // loadable segments after section headers are removed.
+    const auto va_to_file = [&](std::uint32_t va, std::uint32_t size = 1) -> std::size_t {
+        for (const auto &p : programs) {
+            if (p.type != 1 || va < p.vaddr)
+                continue;
+            const std::uint64_t delta = static_cast<std::uint64_t>(va) - p.vaddr;
+            if (delta <= p.filesz &&
+                static_cast<std::uint64_t>(size) <= static_cast<std::uint64_t>(p.filesz) - delta &&
+                static_cast<std::uint64_t>(p.file_offset) + delta + size <= available())
+                return static_cast<std::size_t>(p.file_offset + delta);
+        }
+        return std::string::npos;
+    };
+
+    const auto entry_file = va_to_file(entry);
+    if (entry_file != std::string::npos) {
+        NativeLogger::write("analyzer: entry VA " + report.entry_point +
+                            " maps to embedded ELF file offset " + hex_u64(entry_file, 8));
+    } else {
+        NativeLogger::write("analyzer: entry VA " + report.entry_point + " has no PT_LOAD file mapping");
+    }
+
+    // Parse PT_DYNAMIC directly. Section headers are intentionally not required.
+    // This recovers the dynamic linker metadata from stripped release ELFs.
+    std::ostringstream dynamic;
+    std::size_t dynamic_count = 0;
+    bool saw_dynamic_segment = false;
+    for (const auto &p : programs) {
+        if (p.type != 2)
+            continue;
+        saw_dynamic_segment = true;
+        if (static_cast<std::uint64_t>(p.file_offset) + p.filesz > available() || p.filesz < 8) {
+            dynamic << "PT_DYNAMIC file range INVALID\n";
+            continue;
+        }
+        dynamic << "PT_DYNAMIC file=" << hex_u64(p.file_offset, 8)
+                << " size=" << hex_u64(p.filesz, 8) << "\n";
+        const std::uint32_t count = p.filesz / 8;
+        for (std::uint32_t i = 0; i < count; ++i) {
+            const auto *d = e + p.file_offset + static_cast<std::uint64_t>(i) * 8;
+            const std::int32_t tag = static_cast<std::int32_t>(u32le(d));
+            const std::uint32_t value = u32le(d + 4);
+            dynamic << "  [" << i << "] tag=" << tag << " value=" << hex_u64(value, 8);
+            switch (tag) {
+            case 0: dynamic << " DT_NULL"; break;
+            case 1: dynamic << " DT_NEEDED"; break;
+            case 2: dynamic << " DT_PLTRELSZ"; break;
+            case 3: dynamic << " DT_PLTGOT"; break;
+            case 4: dynamic << " DT_HASH"; break;
+            case 5: dynamic << " DT_STRTAB"; break;
+            case 6: dynamic << " DT_SYMTAB"; break;
+            case 7: dynamic << " DT_RELA"; break;
+            case 8: dynamic << " DT_RELASZ"; break;
+            case 9: dynamic << " DT_RELAENT"; break;
+            case 10: dynamic << " DT_STRSZ"; break;
+            case 11: dynamic << " DT_SYMENT"; break;
+            case 12: dynamic << " DT_INIT"; break;
+            case 13: dynamic << " DT_FINI"; break;
+            case 14: dynamic << " DT_SONAME"; break;
+            case 15: dynamic << " DT_RPATH"; break;
+            case 17: dynamic << " DT_REL"; break;
+            case 18: dynamic << " DT_RELSZ"; break;
+            case 19: dynamic << " DT_RELENT"; break;
+            case 20: dynamic << " DT_PLTREL"; break;
+            case 21: dynamic << " DT_DEBUG"; break;
+            case 22: dynamic << " DT_TEXTREL"; break;
+            case 23: dynamic << " DT_JMPREL"; break;
+            case 24: dynamic << " DT_BIND_NOW"; break;
+            case 25: dynamic << " DT_INIT_ARRAY"; break;
+            case 26: dynamic << " DT_FINI_ARRAY"; break;
+            case 27: dynamic << " DT_INIT_ARRAYSZ"; break;
+            case 28: dynamic << " DT_FINI_ARRAYSZ"; break;
+            case 29: dynamic << " DT_RUNPATH"; break;
+            case 30: dynamic << " DT_FLAGS"; break;
+            case 32: dynamic << " DT_PREINIT_ARRAY"; break;
+            case 33: dynamic << " DT_PREINIT_ARRAYSZ"; break;
+            default: break;
+            }
+            dynamic << "\n";
+            ++dynamic_count;
+            if (tag == 0)
+                break;
+        }
+    }
+    if (!saw_dynamic_segment)
+        dynamic << "No PT_DYNAMIC segment.\n";
+    report.dynamic_info = dynamic.str();
+    NativeLogger::write("analyzer: PT_DYNAMIC entries=" + std::to_string(dynamic_count) +
+                        (saw_dynamic_segment ? "" : " (segment absent)"));
+
     if (shoff == 0 || shnum == 0) {
-        NativeLogger::write("analyzer: no section table (shoff/shnum empty); continuing with program headers");
+        NativeLogger::write("analyzer: no section table (shoff/shnum empty); segment analysis complete");
         return;
     }
     if (shentsize < 0x28) {
@@ -257,7 +370,6 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
     };
 
     std::ostringstream dyn;
-    std::size_t dynamic_count = 0;
     for (const auto &s : sections) {
         if (s.type != 6 || s.entsize < 8 || s.size == 0 ||
             static_cast<std::uint64_t>(s.offset) + s.size > available())
@@ -273,10 +385,10 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
             if (tag == 1 && strtab)
                 dyn << " name=" << safe_string(*strtab, value);
             dyn << "\n";
-            ++dynamic_count;
         }
     }
-    report.dynamic_info = dyn.str();
+    if (!dyn.str().empty())
+        report.dynamic_info += dyn.str();
 
     std::ostringstream symbols;
     std::size_t symbol_count = 0;
@@ -362,7 +474,6 @@ void collect_elf_details(const std::vector<std::uint8_t> &data, std::size_t elf_
                         " symbols=" + std::to_string(symbol_count) +
                         " relocations=" + std::to_string(relocation_count));
 }
-
 void collect_api_strings(const std::vector<std::uint8_t> &data, std::vector<std::string> &out) {
     static constexpr std::array<const char *, 19> needles = {
         "sceKernel", "sceIo", "sceGxm", "sceAudio", "sceCtrl",
