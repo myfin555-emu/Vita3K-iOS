@@ -77,6 +77,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -630,8 +631,8 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
                 && !link_error && !fs::exists(vita_ger, link_error) && !link_error) {
                 fs::create_directories(vita_ger.parent_path(), link_error);
                 if (!link_error) {
-                    ::symlink(external_ger.string().c_str(), vita_ger.string().c_str());
-                    if (errno == 0)
+                    errno = 0;
+                    if (::symlink(external_ger.string().c_str(), vita_ger.string().c_str()) == 0)
                         LOG_INFO("GE:R: linked Documents/PCSE00801 into VitaFS at {}", vita_ger);
                     else
                         LOG_WARN("GE:R: could not link Documents/PCSE00801 into VitaFS: errno={}", errno);
