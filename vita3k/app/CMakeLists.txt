@@ -17,6 +17,12 @@ add_library(
 target_include_directories(app PUBLIC include)
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(app PUBLIC emuenv mem)
+
+if(VITA3K_BUILD_IOS_UPSTREAM_CORE AND VITA3K_IOS_GER_ONLY)
+    # app_init.cpp owns the upstream renderer selection. Keep the GE:R-only
+    # Metal decision on the app target as well as the renderer/frontend.
+    target_compile_definitions(app PRIVATE VITA3K_IOS_GER_ONLY=1)
+endif()
 if(USE_DISCORD_RICH_PRESENCE)
   target_link_libraries(app PUBLIC discord-rpc)
 endif()
