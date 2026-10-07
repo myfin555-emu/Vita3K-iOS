@@ -1,4 +1,5 @@
 #include <vita3k_ios/GERNativeRuntime.h>
+#include <vita3k_ios/GERNativeLogger.h>
 
 #include <algorithm>
 #include <array>
@@ -80,10 +81,12 @@ GameInstall inspect_game(const fs::path &root) {
 NativeRuntime::NativeRuntime() = default;
 
 RuntimeStatus NativeRuntime::scan() {
+    NativeLogger::write("runtime: scan begin");
     status_ = {};
     status_.game.title_id = kTitleId;
 
     for (const auto &root : candidate_game_roots()) {
+        NativeLogger::write("runtime: checking root " + root.string());
         if (!directory(root))
             continue;
 
@@ -101,9 +104,11 @@ RuntimeStatus NativeRuntime::scan() {
             status_.message =
                 "GE:R data directory found, but sce_sys/param.sfo and eboot.bin are required.";
         }
+        NativeLogger::write("runtime: selected root=" + status_.game.root.string() + " ready=" + std::string(status_.ready ? "yes" : "no"));
         return status_;
     }
 
+    NativeLogger::write("runtime: no game root found");
     status_.message =
         "GE:R not installed. Expected /ux0/app/PCSE00801/ or the app Documents fallback.";
     return status_;
