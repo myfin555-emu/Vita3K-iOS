@@ -135,6 +135,9 @@ struct LibraryView: View {
                     .compatibleOnChange(of: library.isListMode) { _, _ in
                         syncFocusLayout()
                     }
+                    .compatibleOnChange(of: searchText) { _, _ in
+                        library.clearPadFocus()
+                    }
             }
         }
         // Cross on the focused game routes through the same gating as a tap.
