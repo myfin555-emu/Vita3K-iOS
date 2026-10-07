@@ -7,16 +7,11 @@ option(VITA3K_IOS_LINK_CORE "Link the first upstream Vita3K core slice" ON)
 option(VITA3K_IOS_GER_ONLY "Build the iOS frontend as a God Eater Resurrection-only appliance" OFF)
 option(VITA3K_IOS_GER_METAL_FOUNDATION "Compile the isolated GE:R native Metal renderer foundation" OFF)
 if(VITA3K_IOS_GER_ONLY)
-    set(VITA3K_IOS_GER_METAL_FOUNDATION ON CACHE BOOL "Enable GE:R native Metal renderer" FORCE)
-    set(VITA3K_IOS_BUNDLE_ID "org.vita3k.ger.a11" CACHE STRING "Application bundle identifier" FORCE)
+    set(VITA3K_IOS_BUNDLE_ID "org.vita3k.ger.native" CACHE STRING "Native GE:R iOS bundle identifier" FORCE)
 endif()
 
-if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
-    message(FATAL_ERROR "VITA3K_IOS_GER_METAL_FOUNDATION requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON.")
-endif()
-
-if(VITA3K_IOS_GER_ONLY AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE)
-    message(FATAL_ERROR "VITA3K_IOS_GER_ONLY requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON.")
+if(VITA3K_IOS_GER_METAL_FOUNDATION AND NOT VITA3K_BUILD_IOS_UPSTREAM_CORE AND NOT VITA3K_IOS_GER_ONLY)
+    message(FATAL_ERROR "VITA3K_IOS_GER_METAL_FOUNDATION requires VITA3K_BUILD_IOS_UPSTREAM_CORE=ON unless the native GE:R target is selected.")
 endif()
 
 if(NOT VITA3K_IOS_LINK_CORE)
@@ -24,7 +19,34 @@ if(NOT VITA3K_IOS_LINK_CORE)
         "Bootstrap-only builds are no longer supported. Set VITA3K_IOS_LINK_CORE=ON.")
 endif()
 
-if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
+if(VITA3K_IOS_GER_ONLY)
+    add_executable(Vita3KiOS MACOSX_BUNDLE
+        src/GERNativeMain.mm
+        src/GERNativeAppDelegate.mm
+        src/GERNativeRuntime.cpp
+        src/GERNativeRenderer.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets
+    )
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_include_directories(Vita3KiOS PRIVATE include)
+    target_compile_features(Vita3KiOS PRIVATE cxx_std_23)
+    target_compile_options(Vita3KiOS PRIVATE
+        $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wall>
+        $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wextra>)
+    target_compile_definitions(Vita3KiOS PRIVATE
+        VITA3K_PLATFORM_IOS=1
+        GER_NATIVE_RUNTIME=1)
+    target_link_libraries(Vita3KiOS PRIVATE
+        "-framework CoreGraphics"
+        "-framework Foundation"
+        "-framework GameController"
+        "-framework Metal"
+        "-framework MetalKit"
+        "-framework QuartzCore"
+        "-framework UIKit"
+        "-framework UniformTypeIdentifiers")
+elseif(VITA3K_BUILD_IOS_UPSTREAM_CORE)
     # Stage-2 upstream-core application: SDL3 owns the UIKit application
     # lifecycle and the frontend boots titles through the real emulator.
     # src/Swift/*.swift is the SwiftUI frontend; TsubomiBridge.mm is the only
