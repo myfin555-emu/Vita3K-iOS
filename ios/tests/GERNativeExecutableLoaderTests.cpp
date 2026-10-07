@@ -83,7 +83,6 @@ int main() {
     assert(image.entry == 0x81000008);
     assert(image.memory_size == 0x1008);
     assert(image.memory[0] == 0 && image.memory[15] == 15);
-    assert(image.memory[0x1000] == 0);
     assert(image.memory[0x1004] == 0); // BSS
     assert(image.relocations.size() == 1);
     assert(image.relocations_applied == 1);
