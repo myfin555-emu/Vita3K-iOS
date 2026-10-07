@@ -2,6 +2,7 @@
 
 // Keep display frame types opaque in this Objective-C++-visible header. The
 // implementation includes <display/state.h> where the frame fields are used.
+#include <renderer/state.h>
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
 
