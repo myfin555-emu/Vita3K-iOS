@@ -1027,7 +1027,7 @@ bool create(MetalState &state, std::unique_ptr<Context> &context, MemState &mem)
 
 bool create(MetalState &state, std::unique_ptr<RenderTarget> &target,
     const SceGxmRenderTargetParams &params) {
-    LOG_INFO("GE:R Metal TRACE render_target.create width={} height={} scenes={} scenes_per_frame={} flags={}",
+    LOG_INFO("GE:R Metal TRACE render_target.create width={} height={} scenes_per_frame={} flags={}",
         params.width, params.height, params.scenesPerFrame, params.flags);
     auto rt = std::make_unique<MetalRenderTarget>();
     rt->width = std::max<uint32_t>(1, static_cast<uint32_t>(params.width * state.res_multiplier));
