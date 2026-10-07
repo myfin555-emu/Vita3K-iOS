@@ -189,8 +189,7 @@ static std::string pointer_key(const void *a, const void *b, const GxmRecordStat
 }
 
 static void remap_msl_bindings(spirv_cross::CompilerMSL &compiler) {
-    auto remap = [&](const auto &resources,
-                     uint32_t texture_base, uint32_t sampler_base) {
+    auto remap = [&](const auto &resources) {
         for (const auto &resource : resources) {
             const uint32_t set = compiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
             const uint32_t binding = compiler.get_decoration(resource.id, spv::DecorationBinding);
@@ -202,12 +201,12 @@ static void remap_msl_bindings(spirv_cross::CompilerMSL &compiler) {
     };
 
     auto resources = compiler.get_shader_resources();
-    remap(resources.sampled_images, 0, 0);
-    remap(resources.separate_images, 0, 0);
-    remap(resources.separate_samplers, 0, 0);
-    remap(resources.storage_images, 30, 0);
-    remap(resources.uniform_buffers, 0, 0);
-    remap(resources.storage_buffers, 0, 0);
+    remap(resources.sampled_images);
+    remap(resources.separate_images);
+    remap(resources.separate_samplers);
+    remap(resources.storage_images);
+    remap(resources.uniform_buffers);
+    remap(resources.storage_buffers);
 }
 
 static std::pair<std::string, std::string> compile_shader(const SceGxmProgram &program,
