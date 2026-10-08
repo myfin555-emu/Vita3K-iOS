@@ -336,6 +336,7 @@ public:
     }
 
     void InterpreterFallback(Dynarmic::A32::VAddr addr, size_t num_insts) override {
+        LOG_WARN_ONCE("Dynarmic InterpreterFallback active: guest execution is falling back from JIT for unsupported instructions");
         LOG_ERROR("Unimplemented instruction at address {}:\n{}", log_hex(addr), save_context(*parent).description());
     }
 
@@ -423,6 +424,21 @@ std::unique_ptr<Dynarmic::A32::Jit> DynarmicCPU::make_jit() {
     config.optimizations = cpu_opt ? Dynarmic::all_safe_optimizations : Dynarmic::no_optimizations;
     config.enable_cycle_counting = time_sliced;
 
+    LOG_INFO("Dynarmic runtime: {} | arch=A32/v7 -> host={} | cpu_opt={} | time_sliced={} | memory_path={} | page_table={} | fastmem={} | code_cache={} MiB",
+        cpu_opt ? "JIT ENABLED (Dynarec)" : "JIT DISABLED (Interpreter fallback)",
+#if defined(__aarch64__)
+        "ARM64",
+#elif defined(__x86_64__)
+        "x86_64",
+#else
+        "unknown",
+#endif
+        cpu_opt, time_sliced,
+        parent->mem->use_page_table ? "page-table" : "fastmem/direct",
+        parent->mem->use_page_table && cpu_opt && !log_mem,
+        !parent->mem->use_page_table && cpu_opt && !log_mem,
+        config.code_cache_size / (1024 * 1024));
+
 #if defined(VITA3K_PLATFORM_IOS) && defined(__aarch64__)
     // StikDebug services Oaknut's BRK #0xf00d while the JIT constructor maps
     // its execution cache. Serialize this short boundary so simultaneous
@@ -475,9 +491,18 @@ void DynarmicCPU::load_cp15(const std::array<uint32_t, 3> &values) { cp15->load(
 DynarmicCPU::~DynarmicCPU() = default;
 
 void DynarmicCPU::ensure_jit() {
-    if (jit)
+    if (jit) {
+        if (!jit_status_logged) {
+            LOG_INFO("Dynarmic runtime status: JIT ENABLED (Dynarec), thread={}, core={}", parent->thread_id, core_id);
+            jit_status_logged = true;
+        }
         return;
+    }
     jit = make_jit();
+    if (!jit_status_logged) {
+        LOG_INFO("Dynarmic runtime status: JIT ENABLED (Dynarec), thread={}, core={}", parent->thread_id, core_id);
+        jit_status_logged = true;
+    }
     if (parked_ctx) {
         const CPUContext ctx = *parked_ctx;
         parked_ctx.reset();
