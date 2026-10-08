@@ -293,10 +293,45 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
             }
         }
 
+        const auto frame_start = std::chrono::steady_clock::now();
         state.render_frame(display, gxm, mem);
         state.swap_window();
         state.host_frames_presented.fetch_add(1, std::memory_order_relaxed);
         state.async_flip_requested.store(false, std::memory_order_relaxed);
+
+#ifdef VITA3K_PLATFORM_IOS
+        const auto frame_end = std::chrono::steady_clock::now();
+        metrics_frames++;
+        metrics_frame_ms += std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
+        const uint64_t draw_calls = state.draw_calls.load(std::memory_order_relaxed);
+        const uint64_t metrics_draw_calls = draw_calls - metrics_draw_calls_start;
+
+        // A11 target: 30 FPS / 33.33 ms. Sleep only the remaining budget;
+        // never spin while waiting for the next frame slot.
+        next_frame_deadline += kFrameBudget;
+        if (frame_end < next_frame_deadline) {
+            std::this_thread::sleep_for(next_frame_deadline - frame_end);
+        } else if (frame_end - next_frame_deadline > kFrameBudget * 2) {
+            next_frame_deadline = frame_end;
+        }
+
+        const auto metrics_now = std::chrono::steady_clock::now();
+        if (metrics_now - metrics_window_start >= std::chrono::seconds(1)) {
+            const double seconds = std::chrono::duration<double>(metrics_now - metrics_window_start).count();
+            const double fps = metrics_frames / std::max(seconds, 0.001);
+            const double avg_frame_ms = metrics_frames ? metrics_frame_ms / static_cast<double>(metrics_frames) : 0.0;
+            const double draws_per_frame = metrics_frames ? static_cast<double>(metrics_draw_calls) / static_cast<double>(metrics_frames) : 0.0;
+            const auto pressure = vita3k_ios::sample_runtime_pressure();
+            LOG_INFO("iOS frame metrics: avg_fps={:.2f} avg_frame_latency_ms={:.2f} draw_calls_per_frame={:.1f} frames={} thermal={} rss={} MiB available={} MiB pressure={}%",
+                fps, avg_frame_ms, draws_per_frame, metrics_frames,
+                vita3k_ios::ThermalThrottleManager::state_name(pressure.thermal),
+                pressure.rss_mb, pressure.available_mb, pressure.memory_pressure);
+            metrics_window_start = metrics_now;
+            metrics_frames = 0;
+            metrics_frame_ms = 0.0;
+            metrics_draw_calls_start = draw_calls;
+        }
+#endif
 
 #ifdef TRACY_ENABLE
         FrameMark;
