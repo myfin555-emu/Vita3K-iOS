@@ -285,6 +285,7 @@ bool save_custom_config(const Config::CurrentConfig &cc, const fs::path &config_
     gpu_child.append_attribute("v-sync") = cc.v_sync;
     gpu_child.append_attribute("anisotropic-filtering") = cc.anisotropic_filtering;
     gpu_child.append_attribute("async-pipeline-compilation") = cc.async_pipeline_compilation;
+    gpu_child.append_attribute("precompile-shaders-before-launch") = cc.precompile_shaders_before_launch;
     gpu_child.append_attribute("import-textures") = cc.import_textures;
     gpu_child.append_attribute("export-textures") = cc.export_textures;
     gpu_child.append_attribute("export-as-png") = cc.export_as_png;
