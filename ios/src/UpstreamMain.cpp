@@ -753,7 +753,7 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
         .resolution_multiplier = current.resolution_multiplier,
         .v_sync = current.v_sync,
         .shader_cache = current.shader_cache,
-        .fps_limit = 60,
+        .fps_limit = 30,
         .fps_hack = current.fps_hack,
         .turbo_mode = current.turbo_mode,
         .modules_mode = current.modules_mode,
@@ -2345,7 +2345,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
 
     const bool ram_budget_changed = desired.ios_emulator_ram_mb != emuenv.cfg.ios_emulator_ram_mb;
     const auto result = app::commit_settings(emuenv, desired);
-    emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
+    emuenv.display.fps_limit.store(30, std::memory_order_relaxed);
     std::vector<std::string> restart_required;
     restart_required.reserve(result.restart_required_settings.size());
     for (const auto setting : result.restart_required_settings)
@@ -2408,7 +2408,7 @@ void apply_game_session_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &s
     }
 #endif
 
-    emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
+    emuenv.display.fps_limit.store(30, std::memory_order_relaxed);
     LOG_INFO("Per-game settings override active: res x{} vsync={} fps=60 cpu_opt={} ngs={} async={} aniso={} high_accuracy={} surface_sync={} double_buffer={}",
         current.resolution_multiplier, current.v_sync, settings.cpu_opt,
         settings.ngs_enable, current.async_pipeline_compilation, current.anisotropic_filtering,
@@ -2912,7 +2912,7 @@ int main(int argc, char *argv[]) {
     const auto restore_global_config = [&] {
         if (session_settings) {
             emuenv->cfg.current_config = saved_current_config;
-            emuenv->display.fps_limit.store(60, std::memory_order_relaxed);
+            emuenv->display.fps_limit.store(30, std::memory_order_relaxed);
         }
     };
 
@@ -2999,7 +2999,7 @@ int main(int argc, char *argv[]) {
     emuenv->display.fps_hack = emuenv->cfg.current_config.fps_hack;
     LOG_INFO("iOS speed settings active: fps-hack={} turbo-mode={}",
         emuenv->cfg.current_config.fps_hack, emuenv->cfg.turbo_mode);
-    emuenv->display.fps_limit.store(60, std::memory_order_relaxed);
+    emuenv->display.fps_limit.store(30, std::memory_order_relaxed);
 
     const bool has_virtual_controller = vita3k_ios_attach_virtual_controller();
     if (has_virtual_controller) {
