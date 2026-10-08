@@ -150,11 +150,47 @@ bool AppSessionController::load_and_run() {
     if (run_app(emuenv, main_module_id, active_launch_request) != Success)
         return false;
 
+    prepare_game_launch_overlay(emuenv);
+
+    // When enabled, the guest is paused immediately after module startup while
+    // the renderer warms the shader cache. This keeps the expensive known-shader
+    // work out of active gameplay without inventing a second compiler.
+    const bool precompile_before_launch = emuenv.cfg.precompile_shaders_before_launch
+        && emuenv.renderer->precompile_requested;
+
+    if (precompile_before_launch)
+        emuenv.kernel.pause_threads();
+
     frame_host->get().prepare_for_render_thread();
 
     renderer::start_render_thread(*emuenv.renderer, emuenv.display, emuenv.gxm, emuenv.mem, emuenv.cfg);
 
     frame_host->get().finalize_render_thread_start();
+
+    if (precompile_before_launch) {
+        constexpr auto timeout = std::chrono::minutes(5);
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (!emuenv.renderer->precompile_complete.load(std::memory_order_acquire)
+            && !emuenv.renderer->render_failed.load(std::memory_order_acquire)
+            && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+
+        const bool completed = emuenv.renderer->precompile_complete.load(std::memory_order_acquire);
+        const bool failed = emuenv.renderer->render_failed.load(std::memory_order_acquire);
+
+        if (!completed || failed) {
+            LOG_ERROR("Pre-launch shader compilation did not complete: completed={} failed={} error={}",
+                completed, failed, emuenv.renderer->render_error);
+            renderer::stop_render_thread(*emuenv.renderer);
+            emuenv.kernel.resume_threads();
+            return false;
+        }
+
+        LOG_INFO("Pre-launch shader compilation completed: {}/{} shaders",
+            emuenv.renderer->precompile_progress, emuenv.renderer->precompile_total);
+        emuenv.kernel.resume_threads();
+    }
 
     set_phase(AppSessionPhase::Running);
     return true;
