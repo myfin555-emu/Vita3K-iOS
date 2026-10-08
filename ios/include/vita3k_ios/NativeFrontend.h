@@ -69,6 +69,8 @@ struct Vita3KIOSSettings {
     bool cpu_opt = true;
     bool ngs_enable = true;
     bool async_pipeline_compilation = true;
+    // Precompile the known shader cache before releasing guest execution. The first run can only discover shaders as the game uses them.
+    bool precompile_shaders_before_launch = false;
     int anisotropic_filtering = 1;
     // Upstream's accurate render paths (no texture-viewport shortcut, shader
     // interlock where available). Slower, but bypasses the fast paths that
