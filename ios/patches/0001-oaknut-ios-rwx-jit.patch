@@ -85,6 +85,17 @@ index bfa87d96..0314a4fb 100644
 +        callback(event, size, available);
 +}
 +
++inline std::size_t ios_jit_page_size()
++{
++    return 16 * 1024;
++}
++
++inline std::size_t align_jit_size(std::size_t size)
++{
++    const std::size_t page = ios_jit_page_size();
++    return (size + page - 1) & ~(page - 1);
++}
++
 +inline bool requires_universal_jit()
 +{
 +    // Prefer the conventional mapping whenever the process permits it,
