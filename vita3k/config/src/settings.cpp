@@ -196,6 +196,7 @@ bool load_custom_config(Config::CurrentConfig &out, const fs::path &config_path,
         out.v_sync = gpu.attribute("v-sync").as_bool();
         out.anisotropic_filtering = gpu.attribute("anisotropic-filtering").as_int();
         out.async_pipeline_compilation = gpu.attribute("async-pipeline-compilation").as_bool();
+        out.precompile_shaders_before_launch = gpu.attribute("precompile-shaders-before-launch").as_bool(false);
         out.import_textures = gpu.attribute("import-textures").as_bool();
         out.export_textures = gpu.attribute("export-textures").as_bool();
         out.export_as_png = gpu.attribute("export-as-png").as_bool();
