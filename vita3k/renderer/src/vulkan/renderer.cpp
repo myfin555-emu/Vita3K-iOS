@@ -509,7 +509,7 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
                 &shader_compression },
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", vk::LayerSettingTypeEXT::eBool32, 1,
                 &synchronous_queue_submits },
-            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_QUEUE", vk::LayerSettingTypeEXT::eUInt32, 1,
+            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_QUEUE", vk::LayerSettingTypeEXT::eUint32, 1,
                 &max_active_metal_command_buffers },
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_FAST_MATH_ENABLED", vk::LayerSettingTypeEXT::eInt32, 1,
                 &fast_math },
