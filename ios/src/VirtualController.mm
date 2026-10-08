@@ -57,7 +57,11 @@ std::atomic<uint64_t> g_pending_button_release{0};
 void input_worker_loop() {
     while (g_input_worker_running.load(std::memory_order_acquire)) {
         std::unique_lock lock(g_input_mutex);
-        g_input_cv.wait_for(lock, std::chrono::milliseconds(16));
+        g_input_cv.wait_for(lock, std::chrono::milliseconds(16), [] {
+            return g_pending_button_press.load(std::memory_order_acquire) != 0
+                || g_pending_button_release.load(std::memory_order_acquire) != 0
+                || !g_input_worker_running.load(std::memory_order_acquire);
+        });
         lock.unlock();
         if (!g_input_worker_running.load(std::memory_order_acquire))
             break;
