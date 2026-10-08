@@ -150,4 +150,7 @@ struct PerfSample {
 
 PerfSample sample_runtime_pressure();
 
+/** Guest RAM ceiling derived from physical device memory, not a user setting. */
+uint64_t recommended_guest_memory_bytes();
+
 } // namespace vita3k_ios
