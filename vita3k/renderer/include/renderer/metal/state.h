@@ -101,6 +101,7 @@ struct MetalContext final : renderer::Context {
     id<MTLRenderCommandEncoder> render_encoder = nil;
     bool first_render_pass = true;
     bool surface_dirty = false;
+    std::vector<uint8_t> surface_readback;
 
     // Keep one Metal command buffer/encoder alive across the many GXM draws
     // that make up a render pass. Creating and committing a command buffer for
