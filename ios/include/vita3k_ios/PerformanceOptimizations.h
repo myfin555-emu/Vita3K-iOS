@@ -14,7 +14,7 @@ namespace vita3k_ios {
  */
 class FrameRateLimiter {
 public:
-    explicit FrameRateLimiter(int target_fps = 60)
+    explicit FrameRateLimiter(int target_fps = 30)
         : target_fps_(target_fps)
         , frame_budget_ns_(frame_budget_ns(target_fps))
         , next_deadline_(std::chrono::steady_clock::now()) {
@@ -25,14 +25,10 @@ public:
         const auto now = std::chrono::steady_clock::now();
         if (now < next_deadline_) {
             const auto remaining = next_deadline_ - now;
-            // Spin the last ~0.5 ms for tighter pacing; sleep the rest.
-            constexpr auto spin_threshold = std::chrono::microseconds(500);
-            if (remaining > spin_threshold) {
-                std::this_thread::sleep_for(remaining - spin_threshold);
-            }
-            while (std::chrono::steady_clock::now() < next_deadline_) {
-                // brief spin
-            }
+            // Never busy-spin on iOS. Sleeping for the complete remaining
+            // budget lets A11 cores enter a lower-power state instead of
+            // burning a core for the last sub-millisecond of every frame.
+            std::this_thread::sleep_for(remaining);
         }
 
         // Advance deadline from the planned slot, not from "now", so a late
@@ -91,6 +87,9 @@ public:
 
     /** Hint the runtime to drop non-essential caches (shader/texture soft). */
     static void request_gc();
+
+    /** Atomically consume a pending memory-pressure GC request. */
+    static bool consume_gc_request();
 };
 
 /**
@@ -136,7 +135,7 @@ struct StabilityDefaults {
     int anisotropic_filtering = 4;
     float resolution_multiplier = 1.0f;
     bool v_sync = true;
-    int fps_limit = 60;
+    int fps_limit = 30;
 };
 
 StabilityDefaults recommended_stability_defaults();
