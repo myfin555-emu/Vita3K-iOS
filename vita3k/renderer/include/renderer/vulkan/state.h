@@ -68,6 +68,8 @@ struct VKState : public renderer::State {
         screen_renderer.need_rebuild = true;
     }
 
+    void trim_caches_for_memory_pressure() override;
+
     // The present mode is baked into the swapchain, so a v-sync change only
     // takes effect once the swapchain is rebuilt.
     void set_vsync_state(bool enable) override {
