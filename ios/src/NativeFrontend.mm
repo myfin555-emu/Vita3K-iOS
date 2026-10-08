@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vita3K team
 
 #include <vita3k_ios/NativeFrontend.h>
+#include <vita3k_ios/PerformanceOptimizations.h>
 #include <vita3k_ios/VirtualController.h>
 #include <util/log.h>
 
@@ -544,7 +545,12 @@ NSCache<NSString *, UIImage *> *cover_cache() {
             addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
                         object:nil
                          queue:NSOperationQueue.mainQueue
-                    usingBlock:^(__unused NSNotification *note) { [cache removeAllObjects]; }];
+                    usingBlock:^(__unused NSNotification *note) {
+                [cache removeAllObjects];
+                // Defer Vulkan destruction to the render thread. UIKit's memory
+                // warning callback must never tear down GPU objects concurrently.
+                vita3k_ios::MemoryMonitor::request_gc();
+            }];
     });
     return cache;
 }
