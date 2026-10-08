@@ -33,6 +33,7 @@ final class SettingsModel: ObservableObject {
     @Published var cpuOptimizations: Bool
     @Published var ngsAudio: Bool
     @Published var asyncPipelineCompilation: Bool
+    @Published var precompileShadersBeforeLaunch: Bool
     @Published var anisotropicFiltering: Int
     @Published var highAccuracy: Bool
     @Published var surfaceSync: Bool
