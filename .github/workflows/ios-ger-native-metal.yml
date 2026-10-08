@@ -6,6 +6,7 @@ on:
     branches:
       - ios/ger-native-metal-isolated
       - ios/ger-metal-performance
+      - ios/a11-30fps-diagnostics
 
 permissions:
   contents: read
