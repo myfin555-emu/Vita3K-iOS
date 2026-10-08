@@ -100,11 +100,15 @@ class PooledCPU final : public CPUInterface {
     bool log_code = false;
     bool log_mem = false;
 
+    std::size_t preferred_worker() const {
+        return guest_core_id % pool->workers.size();
+    }
+
     int execute(bool single_step) {
         parent->svc_called = false;
         if (stopped.exchange(false))
             return 0;
-        const auto index = pool->admission.acquire(stopped);
+        const auto index = pool->admission.acquire(stopped, preferred_worker());
         if (!index) {
             stopped.store(false);
             return 0;
