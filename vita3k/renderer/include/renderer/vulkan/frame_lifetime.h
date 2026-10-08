@@ -21,7 +21,7 @@ constexpr bool should_release_staging_buffer(uint64_t bytes, uint64_t last_used,
     const uint64_t minimum_age = memory_pressure ? MAX_FRAMES_RENDERING : 120;
     const uint64_t minimum_size = memory_pressure ? 0 : 1024 * 1024;
     return bytes > minimum_size && last_used != ~uint64_t{ 0 }
-        && last_used <= current && current - last_used >= minimum_age;
+    && last_used <= current && current - last_used >= minimum_age;
 }
 
 } // namespace renderer::vulkan
