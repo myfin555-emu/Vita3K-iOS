@@ -614,14 +614,24 @@ void new_frame(VKContext &context) {
     }
 
 #ifdef VITA3K_PLATFORM_IOS
-    context.diagnostic_frame_wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - wait_started).count();
+    const auto diagnostic_now = std::chrono::steady_clock::now();
+    context.diagnostic_frame_wait_ms += std::chrono::duration<double, std::milli>(diagnostic_now - wait_started).count();
+    if (context.diagnostic_frames == 0)
+        context.diagnostic_window_start = diagnostic_now;
     if (++context.diagnostic_frames == 300) {
+        const double window_ms = std::chrono::duration<double, std::milli>(
+            diagnostic_now - context.diagnostic_window_start).count();
+        const double average_frame_ms = window_ms / static_cast<double>(context.diagnostic_frames);
+        const double average_fps = window_ms > 0.0
+            ? (1000.0 * static_cast<double>(context.diagnostic_frames) / window_ms)
+            : 0.0;
         uint64_t staging_bytes = 0;
         for (const auto &staging : context.state.texture_cache.staging_buffers)
             staging_bytes += staging.buffer.size;
-        LOG_INFO("iOS renderer: frames={} draws={} skipped={} fetch_pass_switches={} frame_slot_wait_ms={:.1f} staging_mb={:.1f}",
-            context.diagnostic_frames, context.diagnostic_draws, context.diagnostic_skipped_draws,
-            context.diagnostic_fetch_switches, context.diagnostic_frame_wait_ms, staging_bytes / (1024.0 * 1024.0));
+        LOG_INFO("iOS renderer: frames={} avg_fps={:.2f} avg_frame_ms={:.2f} draws={} skipped={} fetch_pass_switches={} frame_slot_wait_ms={:.1f} staging_mb={:.1f}",
+            context.diagnostic_frames, average_fps, average_frame_ms, context.diagnostic_draws,
+            context.diagnostic_skipped_draws, context.diagnostic_fetch_switches,
+            context.diagnostic_frame_wait_ms, staging_bytes / (1024.0 * 1024.0));
         LOG_INFO("iOS surface copies: copied={} reused={} (300 frames)",
             context.diagnostic_surface_copies, context.diagnostic_surface_copy_reuses);
         context.diagnostic_surface_copies = 0;
