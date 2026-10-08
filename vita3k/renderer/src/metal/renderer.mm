@@ -495,6 +495,7 @@ void MetalContext::set_context(MetalRenderTarget *target) {
         end_render_pass(true);
     render_target = target;
     first_render_pass = true;
+    surface_dirty = true;
     record.color_surface.downscale = false;
 }
 
