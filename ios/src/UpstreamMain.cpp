@@ -741,6 +741,7 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
         .cpu_opt = current.cpu_opt,
         .ngs_enable = current.ngs_enable,
         .async_pipeline_compilation = current.async_pipeline_compilation,
+        .precompile_shaders_before_launch = current.precompile_shaders_before_launch,
         .anisotropic_filtering = current.anisotropic_filtering,
         .high_accuracy = current.high_accuracy,
         .surface_sync = !current.disable_surface_sync,
