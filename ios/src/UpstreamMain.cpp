@@ -2282,6 +2282,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         current.texture_cache = settings.texture_cache;
         current.ngs_enable = settings.ngs_enable;
         current.async_pipeline_compilation = settings.async_pipeline_compilation;
+        current.precompile_shaders_before_launch = settings.precompile_shaders_before_launch;
         current.anisotropic_filtering = settings.anisotropic_filtering;
         current.high_accuracy = settings.high_accuracy;
         current.disable_surface_sync = !settings.surface_sync;
