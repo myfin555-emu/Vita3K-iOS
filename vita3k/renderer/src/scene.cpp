@@ -220,6 +220,7 @@ COMMAND(handle_mid_scene_flush) {
 
 COMMAND(handle_draw) {
     TRACY_FUNC_COMMANDS(handle_draw);
+    renderer.draw_calls.fetch_add(1, std::memory_order_relaxed);
     SceGxmPrimitiveType type = helper.pop<SceGxmPrimitiveType>();
     SceGxmIndexFormat format = helper.pop<SceGxmIndexFormat>();
     Ptr<const void> indices = helper.pop<Ptr<const void>>();
