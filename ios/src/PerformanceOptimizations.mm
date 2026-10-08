@@ -69,9 +69,13 @@ bool MemoryMonitor::is_memory_critical() {
 }
 
 void MemoryMonitor::request_gc() {
-    g_gc_requested.store(true, std::memory_order_relaxed);
+    g_gc_requested.store(true, std::memory_order_release);
     LOG_WARN("iOS MemoryMonitor: GC requested (rss={} MiB, available={} MiB)",
         get_rss_mb(), get_available_bytes() / (1024 * 1024));
+}
+
+bool MemoryMonitor::consume_gc_request() {
+    return g_gc_requested.exchange(false, std::memory_order_acq_rel);
 }
 
 ThermalThrottleManager::ThermalState ThermalThrottleManager::get_thermal_state() {
