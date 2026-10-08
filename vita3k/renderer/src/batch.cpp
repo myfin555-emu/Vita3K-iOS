@@ -34,6 +34,7 @@
 #include <overlay/shader_precompile_progress.h>
 #include <util/log.h>
 
+#include <algorithm>
 #include <chrono>
 #include <exception>
 #include <memory>
