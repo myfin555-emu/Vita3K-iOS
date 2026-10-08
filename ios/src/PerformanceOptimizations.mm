@@ -144,6 +144,19 @@ StabilityDefaults recommended_stability_defaults() {
     return {};
 }
 
+uint64_t recommended_guest_memory_bytes() {
+    @autoreleasepool {
+        const uint64_t physical = static_cast<uint64_t>(NSProcessInfo.processInfo.physicalMemory);
+        // Keep the guest well below Jetsam: 2 GB devices get 512 MiB,
+        // 3 GB devices 640 MiB, and 4 GB+ devices 768 MiB.
+        if (physical >= 4ull * 1024 * 1024 * 1024)
+            return 768ull * 1024 * 1024;
+        if (physical >= 3ull * 1024 * 1024 * 1024)
+            return 640ull * 1024 * 1024;
+        return 512ull * 1024 * 1024;
+    }
+}
+
 PerfSample sample_runtime_pressure() {
     PerfSample sample;
     sample.thermal = ThermalThrottleManager::get_thermal_state();
