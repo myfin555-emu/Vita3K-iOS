@@ -234,6 +234,7 @@ struct VKContext : public renderer::Context {
     uint64_t diagnostic_skipped_draws = 0;
     uint64_t diagnostic_fetch_switches = 0;
     uint64_t diagnostic_surface_copies = 0;
+    std::chrono::steady_clock::time_point diagnostic_window_start{};
     uint64_t diagnostic_surface_copy_reuses = 0;
     uint64_t diagnostic_frames = 0;
     double diagnostic_frame_wait_ms = 0;
