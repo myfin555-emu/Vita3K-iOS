@@ -1081,6 +1081,28 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
     }
 }
 
+void PipelineCache::trim_shader_modules(std::size_t max_modules) {
+#ifdef VITA3K_PLATFORM_IOS
+    std::lock_guard<std::mutex> guard(shaders_mutex);
+    if (shaders.size() <= max_modules)
+        return;
+
+    const std::size_t before = shaders.size();
+    while (shaders.size() > max_modules) {
+        auto it = shaders.begin();
+        if (it == shaders.end())
+            break;
+        if (it->second)
+            state.device.destroyShaderModule(it->second);
+        shaders.erase(it);
+    }
+
+    LOG_INFO("iOS shader module cache trimmed: {} -> {} modules", before, shaders.size());
+#else
+    (void)max_modules;
+#endif
+}
+
 vk::ShaderModule PipelineCache::precompile_shader(const Sha256Hash &hash, bool search_first) {
     if (search_first) {
         // happens while loading the thread, no parallel access so no need for a mutex
