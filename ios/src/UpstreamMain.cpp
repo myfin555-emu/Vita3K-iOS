@@ -2303,7 +2303,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     desired.texture_cache = settings.texture_cache;
     // JIT settings are chosen at startup; stale UI/persisted values cannot override them.
     desired.ios_jit_threads = emuenv.cfg.ios_jit_threads;
-    desired.ios_emulator_ram_mb = std::clamp(settings.emulator_ram_mb, 512, 2048);
+    desired.ios_emulator_ram_mb = emuenv.cfg.ios_emulator_ram_mb;
     desired.ios_jit_cache_mb = emuenv.cfg.ios_jit_cache_mb;
     desired.ngs_enable = settings.ngs_enable;
     desired.async_pipeline_compilation = true;
