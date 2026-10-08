@@ -551,7 +551,7 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
         cfg.ios_emulator_ram_mb = std::clamp(cfg.ios_emulator_ram_mb, 512, 2048);
         set_ios_jit_threads(cfg.ios_jit_threads);
         set_ios_guest_memory_limit(static_cast<uint64_t>(cfg.ios_emulator_ram_mb) * 1024 * 1024);
-        cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 16, 128);
+        cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 8, 128);
         set_ios_jit_cache_size(static_cast<std::size_t>(cfg.ios_jit_cache_mb) * 1024 * 1024);
 
         // MoltenVK-backed Vulkan is the only renderer on iOS.
