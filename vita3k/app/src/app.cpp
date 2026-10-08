@@ -278,11 +278,15 @@ void prepare_game_launch_overlay(EmuEnvState &emuenv) {
     if (fs::exists(bg_path))
         renderer.precompile_bg_path = fs_utils::path_to_utf8(bg_path);
 
-    if (renderer::get_shaders_cache_hashs(renderer) && emuenv.cfg.shader_cache) {
+    if (renderer::get_shaders_cache_hashs(renderer) && emuenv.cfg.shader_cache
+        && emuenv.cfg.precompile_shaders_before_launch) {
         renderer.precompile_queue = renderer.shaders_cache_hashs;
         renderer.precompile_progress = 0;
         renderer.precompile_complete.store(false, std::memory_order_relaxed);
         renderer.precompile_requested = true;
+    } else {
+        // No pre-launch work is pending. Keep the normal render path immediate.
+        renderer.precompile_complete.store(true, std::memory_order_release);
     }
 }
 
