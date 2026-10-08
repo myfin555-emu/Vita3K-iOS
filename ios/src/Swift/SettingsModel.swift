@@ -79,6 +79,7 @@ final class SettingsModel: ObservableObject {
         cpuOptimizations = settings.cpuOptimizations
         ngsAudio = settings.ngsAudio
         asyncPipelineCompilation = settings.asyncPipelineCompilation
+        precompileShadersBeforeLaunch = settings.precompileShadersBeforeLaunch
         anisotropicFiltering = settings.anisotropicFiltering
         highAccuracy = settings.highAccuracy
         surfaceSync = settings.surfaceSync
