@@ -548,10 +548,14 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
         cfg.ios_jit_cache_mb = static_cast<int>(jit_budget.cache_mb);
         LOG_INFO("iOS automatic JIT: {} shared slots, {} MiB code cache maximum, allocated on demand",
             jit_budget.slots, jit_budget.slots * jit_budget.cache_mb);
-        cfg.ios_emulator_ram_mb = std::clamp(cfg.ios_emulator_ram_mb, 512, 2048);
+        // A11/iOS Jetsam safety: keep guest RAM below the app's physical-memory
+        // ceiling; renderer/JIT/audio/Metal allocations sit outside this pool.
+        cfg.ios_emulator_ram_mb = std::clamp(cfg.ios_emulator_ram_mb, 512, 768);
         set_ios_jit_threads(cfg.ios_jit_threads);
         set_ios_guest_memory_limit(static_cast<uint64_t>(cfg.ios_emulator_ram_mb) * 1024 * 1024);
-        cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 16, 128);
+        // Keep each shared JIT slot small enough that the aggregate code cache cannot
+        // consume a Jetsam-sized chunk of the process on older devices.
+        cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 16, 32);
         set_ios_jit_cache_size(static_cast<std::size_t>(cfg.ios_jit_cache_mb) * 1024 * 1024);
 
         // MoltenVK-backed Vulkan is the only renderer on iOS.
@@ -2744,11 +2748,14 @@ bool prepare_ios_jit_pool() {
 #else
     if (vita3k_ios_can_allocate_jit()) {
         g_jit_pool_ready.store(true, std::memory_order_relaxed);
+        LOG_INFO("iOS JIT status: ENABLED (Dynarec, native executable mappings)");
         vita3k_ios_set_jit_available(true);
         return true;
     }
-    if (!vita3k_ios_supports_universal_jit() || !ios_debugger_attached())
+    if (!vita3k_ios_supports_universal_jit() || !ios_debugger_attached()) {
+        LOG_WARN("iOS JIT status: DISABLED (Dynarec unavailable; interpreter fallback/launch gate active)");
         return false;
+    }
 
     const std::size_t target_count = get_ios_jit_threads();
     g_unhandled_universal_jit_breakpoint.store(false, std::memory_order_relaxed);
@@ -2775,6 +2782,7 @@ bool prepare_ios_jit_pool() {
             return false;
     }
     g_jit_pool_ready.store(true, std::memory_order_relaxed);
+    LOG_INFO("iOS JIT status: ENABLED (Dynarec, universal JIT region pool ready)");
     vita3k_ios_set_jit_available(true);
     return true;
 #endif
