@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <chrono>
+
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
 #include <renderer/vulkan/frame_descriptor.h>
