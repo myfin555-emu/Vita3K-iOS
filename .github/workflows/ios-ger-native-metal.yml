@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - ios/ger-native-metal-isolated
+      - ios/ger-metal-performance
 
 permissions:
   contents: read
