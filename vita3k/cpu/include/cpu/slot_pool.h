@@ -45,7 +45,7 @@ public:
             throw std::invalid_argument("JIT slot count must be positive");
     }
 
-    std::optional<std::size_t> acquire(const std::atomic_bool &cancelled) {
+    std::optional<std::size_t> acquire(const std::atomic_bool &cancelled, std::optional<std::size_t> preferred = std::nullopt) {
         std::unique_lock lock(mutex);
         const auto ticket = next_ticket++;
         waiting.push_back(ticket);
@@ -57,10 +57,17 @@ public:
             changed.notify_all();
             return std::nullopt;
         }
-        const auto index = std::find(busy.begin(), busy.end(), false) - busy.begin();
+        // Prefer the same worker for a guest core when it is available. Each
+        // worker owns a Dynarmic translation cache, so this preserves hot-code
+        // locality without blocking the queue when another worker is free.
+        std::size_t index = busy.size();
+        if (preferred && *preferred < busy.size() && !busy[*preferred])
+            index = *preferred;
+        else
+            index = std::find(busy.begin(), busy.end(), false) - busy.begin();
         busy[index] = true;
         changed.notify_all();
-        return static_cast<std::size_t>(index);
+        return index;
     }
 
     void release(std::size_t index) {
