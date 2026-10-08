@@ -41,7 +41,9 @@ constexpr size_t TOTAL_MEM_SIZE = GiB(4);
 #if defined(VITA3K_PLATFORM_IOS)
 static uint64_t ios_guest_memory_limit = MiB(640);
 void set_ios_guest_memory_limit(uint64_t bytes) {
-    ios_guest_memory_limit = std::clamp<uint64_t>(bytes, MiB(512), MiB(2048));
+    // Keep the guest pool below the A11 Jetsam envelope; Metal, JIT, audio and
+    // UIKit allocations are accounted for separately by iOS.
+    ios_guest_memory_limit = std::clamp<uint64_t>(bytes, MiB(512), MiB(768));
 }
 #endif
 constexpr bool LOG_PROTECT = false;
