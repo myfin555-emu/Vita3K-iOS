@@ -550,9 +550,9 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
             cfg.ios_jit_threads, cfg.ios_jit_threads * jit_budget.cache_mb);
         // A11/iOS Jetsam safety: keep guest RAM below the app's physical-memory
         // ceiling; renderer/JIT/audio/Metal allocations sit outside this pool.
-        cfg.ios_emulator_ram_mb = std::clamp(cfg.ios_emulator_ram_mb, 512, 768);
-        set_ios_jit_threads(cfg.ios_jit_threads);
-        set_ios_guest_memory_limit(static_cast<uint64_t>(cfg.ios_emulator_ram_mb) * 1024 * 1024);
+        const auto guest_memory_bytes = vita3k_ios::recommended_guest_memory_bytes();
+        cfg.ios_emulator_ram_mb = static_cast<int>(guest_memory_bytes / (1024 * 1024));
+        set_ios_guest_memory_limit(guest_memory_bytes);
         // Keep each shared JIT slot small enough that the aggregate code cache cannot
         // consume a Jetsam-sized chunk of the process on older devices.
         cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 16, 32);
