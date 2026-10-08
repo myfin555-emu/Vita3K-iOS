@@ -127,6 +127,9 @@ struct State {
     // scenes, the renderer itself (or its sync-object gating) is the stall.
     std::atomic<uint64_t> batches_processed{ 0 };
 
+    // Diagnostic counter: guest GXM draw commands executed by the renderer.
+    std::atomic<uint64_t> draw_calls{ 0 };
+
     std::atomic<bool> async_flip_requested{ false };
     std::atomic<int> pending_vsync{ -1 };
     // Current v-sync preference. pending_vsync above is a one-shot the OpenGL
@@ -180,6 +183,9 @@ struct State {
     virtual void late_init(const Config &cfg, const std::string_view game_id, MemState &mem) = 0;
 
     virtual TextureCache *get_texture_cache() = 0;
+    // Called on the render thread after iOS signals memory pressure. Backends
+    // may drop recreatable GPU caches without touching guest memory.
+    virtual void trim_caches_for_memory_pressure() {}
 
     virtual void render_frame(DisplayState &display, const GxmState &gxm, MemState &mem) = 0;
     virtual void swap_window() = 0;
