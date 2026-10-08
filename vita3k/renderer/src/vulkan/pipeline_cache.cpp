@@ -830,7 +830,13 @@ vk::Pipeline PipelineCache::compile_pipeline(SceGxmPrimitiveType type, vk::Rende
 
     const vk::PipelineInputAssemblyStateCreateInfo input_assembly{
         .topology = translate_primitive(type),
-#ifdef __APPLE__
+#ifdef VITA3K_PLATFORM_IOS
+        // Metal does not expose a pipeline state with primitive restart disabled.
+        // iOS strip/fan uploads are already expanded to non-restarting triangles,
+        // so keeping the Vulkan bit enabled for every pipeline avoids MoltenVK's
+        // fallback/warning path without changing the submitted index stream.
+        .primitiveRestartEnable = true
+#elif defined(__APPLE__)
         // The upload path expands draws using the restart sentinel to lists.
         // All remaining strips/fans can enable Metal's mandatory restart
         // without losing a guest vertex. Mapped uploads keep their old path.
