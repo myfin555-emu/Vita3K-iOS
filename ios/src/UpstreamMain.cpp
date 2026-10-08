@@ -2284,7 +2284,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         current.audio_volume = std::clamp(settings.audio_volume, 0, 100);
         current.texture_cache = settings.texture_cache;
         current.ngs_enable = settings.ngs_enable;
-        current.async_pipeline_compilation = settings.async_pipeline_compilation;
+        current.async_pipeline_compilation = true;
         current.anisotropic_filtering = settings.anisotropic_filtering;
         current.high_accuracy = settings.high_accuracy;
         current.disable_surface_sync = !settings.surface_sync;
@@ -2306,7 +2306,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     desired.ios_emulator_ram_mb = std::clamp(settings.emulator_ram_mb, 512, 2048);
     desired.ios_jit_cache_mb = emuenv.cfg.ios_jit_cache_mb;
     desired.ngs_enable = settings.ngs_enable;
-    desired.async_pipeline_compilation = settings.async_pipeline_compilation;
+    desired.async_pipeline_compilation = true;
     desired.anisotropic_filtering = settings.anisotropic_filtering;
     desired.high_accuracy = settings.high_accuracy;
     desired.disable_surface_sync = !settings.surface_sync;
