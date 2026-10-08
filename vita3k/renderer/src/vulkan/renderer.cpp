@@ -489,6 +489,10 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
         // Keep inactive MSL compact in RAM; the pipeline cache still retains
         // enough data for export/reload.
         const int32_t shader_compression = 1; // MoltenVK LZFSE
+        const VkBool32 synchronous_queue_submits = VK_TRUE;
+        const uint32_t max_active_metal_command_buffers = 8;
+        const int32_t fast_math = 2; // fast math, but preserve shader opt-outs
+        const VkBool32 metal_argument_buffers = VK_TRUE;
         // MoltenVK's warning/info logging is surprisingly expensive on a
         // mobile CPU when a game emits many validation/performance messages.
         // Release builds only: retain errors, but remove the per-frame log
@@ -503,6 +507,14 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
 #ifdef VITA3K_PLATFORM_IOS
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_SHADER_COMPRESSION_ALGORITHM", vk::LayerSettingTypeEXT::eInt32, 1,
                 &shader_compression },
+            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", vk::LayerSettingTypeEXT::eBool32, 1,
+                &synchronous_queue_submits },
+            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_QUEUE", vk::LayerSettingTypeEXT::eUInt32, 1,
+                &max_active_metal_command_buffers },
+            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_FAST_MATH_ENABLED", vk::LayerSettingTypeEXT::eInt32, 1,
+                &fast_math },
+            { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", vk::LayerSettingTypeEXT::eBool32, 1,
+                &metal_argument_buffers },
 #ifdef NDEBUG
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_LOG_LEVEL", vk::LayerSettingTypeEXT::eInt32, 1,
                 &release_log_level },
