@@ -378,6 +378,7 @@ index ccf807e2..19e57822 100644
   */
  
  #include <mutex>
++#include <thread>
 +#if defined(__APPLE__)
 +#    include <TargetConditionals.h>
 +#endif
