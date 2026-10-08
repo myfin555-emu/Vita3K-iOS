@@ -639,6 +639,8 @@ Vita3KIOSSettings game_settings_or(NSString *titleId, const Vita3KIOSSettings &f
         settings.ngs_enable = [stored[@"ngs"] boolValue];
     if (stored[@"asyncPipelines"])
         settings.async_pipeline_compilation = [stored[@"asyncPipelines"] boolValue];
+    if (stored[@"precompileShadersBeforeLaunch"])
+        settings.precompile_shaders_before_launch = [stored[@"precompileShadersBeforeLaunch"] boolValue];
     if (stored[@"anisotropic"])
         settings.anisotropic_filtering = [stored[@"anisotropic"] intValue];
     if (stored[@"highAccuracy"])
