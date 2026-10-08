@@ -670,6 +670,7 @@ void store_game_settings(NSString *titleId, const Vita3KIOSSettings &settings) {
         @"cpuOpt": @(settings.cpu_opt),
         @"ngs": @(settings.ngs_enable),
         @"asyncPipelines": @(settings.async_pipeline_compilation),
+        @"precompileShadersBeforeLaunch": @(settings.precompile_shaders_before_launch),
         @"anisotropic": @(settings.anisotropic_filtering),
         @"highAccuracy": @(settings.high_accuracy),
         @"surfaceSync": @(settings.surface_sync),
