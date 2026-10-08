@@ -89,7 +89,7 @@ index bfa87d96..0314a4fb 100644
 +{
 +    // Prefer the conventional mapping whenever the process permits it,
 +    // including older hardware and entitlement-enabled installations.
-+    const std::size_t page_size = static_cast<std::size_t>(getpagesize());
++    const std::size_t page_size = ios_jit_page_size();
 +    void* probe = mmap(nullptr, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
 +        MAP_ANON | MAP_PRIVATE, -1, 0);
 +    if (probe != MAP_FAILED) {
@@ -400,9 +400,12 @@ index ccf807e2..19e57822 100644
  
  void SpinLock::Lock() {
 +#if defined(__APPLE__) && TARGET_OS_IPHONE
++    unsigned spins = 0;
 +    while (__atomic_exchange_n(&storage, 1, __ATOMIC_ACQUIRE) != 0) {
 +        while (__atomic_load_n(&storage, __ATOMIC_RELAXED) != 0) {
 +            __asm__ volatile("yield");
++            if ((++spins & 0x3FFu) == 0)
++                std::this_thread::yield();
 +        }
 +    }
 +#else
