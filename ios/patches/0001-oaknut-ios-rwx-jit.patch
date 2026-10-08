@@ -98,7 +98,7 @@ index bfa87d96..0314a4fb 100644
 +
 +inline bool requires_universal_jit()
 +{
-+    // Prefer the conventional mapping whenever the process permits it,
++    // Prefer the conventional mapping whenever the process permits it.
 +    // including older hardware and entitlement-enabled installations.
 +    const std::size_t page_size = ios_jit_page_size();
 +    void* probe = mmap(nullptr, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
