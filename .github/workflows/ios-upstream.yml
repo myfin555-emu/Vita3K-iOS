@@ -6,6 +6,9 @@ on:
     branches:
       - ios-upstream-core
       - ios/a11-god-eater-a11-performance
+      # Active rabbit / CodeRabbit experiment branches (A11 performance work).
+      - coderabbit/**
+      - rabbit-code/**
     paths:
       - "CMakeLists.txt"
       - "vcpkg.json"
@@ -31,6 +34,9 @@ on:
 permissions:
   contents: read
 
+# One active macOS IPA build per branch. New pushes cancel the previous run so
+# jobs do not stack in the macos-15 runner queue (the main source of long
+# "Queued" waits when several commits land in a short window).
 concurrency:
   group: ios-upstream-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -39,7 +45,9 @@ jobs:
   unsigned-ipa:
     name: Upstream core arm64 device link
     runs-on: macos-15
-    timeout-minutes: 180
+    # Cap wall time so a stuck vcpkg/Xcode step cannot hold a scarce macos-15
+    # runner for three hours and starve the next build.
+    timeout-minutes: 90
 
     steps:
       - name: Check out source and upstream dependencies
@@ -98,7 +106,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-${{ github.run_id }}
+          # Do NOT put github.run_id in the primary key — that forced every run
+          # to miss the exact cache and re-download packages, stretching the
+          # already scarce macos-15 job. Key only on toolchain + dependency set.
+          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}
           restore-keys: |
             vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-
             vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-
@@ -138,11 +149,13 @@ jobs:
             -DUSE_LTO=NEVER
 
       - name: Save iOS vcpkg binary archive
-        if: always()
+        # Only write the cache when this run produced a miss; otherwise we
+        # thrash the shared key and race other concurrent builds.
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-${{ github.run_id }}
+          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}
 
       - name: Build unsigned upstream-core device application
         run: |
