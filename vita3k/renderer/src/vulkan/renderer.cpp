@@ -620,6 +620,21 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
 
         LOG_INFO("Vulkan device: {}", physical_device_properties.deviceName.data());
         LOG_INFO("Driver version: {}", get_driver_version(physical_device_properties.vendorID, physical_device_properties.driverVersion));
+        LOG_INFO("Vulkan caps: api={} vendor=0x{:04X} device=0x{:04X} type={} max2D={} maxPushConstants={} primitiveRestart={} wideLines={} anisotropy={} shaderInt16={}",
+            VK_VERSION_MAJOR(physical_device_properties.apiVersion),
+            physical_device_properties.vendorID,
+            physical_device_properties.deviceID,
+            vk::to_string(physical_device_properties.deviceType),
+            physical_device_properties.limits.maxImageDimension2D,
+            physical_device_properties.limits.maxPushConstantsSize,
+            physical_device_features.primitiveRestart,
+            physical_device_features.wideLines,
+            physical_device_features.samplerAnisotropy,
+            physical_device_features.shaderInt16);
+#ifdef VITA3K_PLATFORM_IOS
+        LOG_INFO("MoltenVK/iOS diagnostic: native Metal translation active; primitiveRestart Vulkan feature={} (Metal portability may require restart-enabled strip/fan pipelines)",
+            physical_device_features.primitiveRestart);
+#endif
     }
 
 #ifdef __ANDROID__
