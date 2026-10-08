@@ -446,9 +446,54 @@ MetalContext::MetalContext(MetalState &state, MemState &mem)
     : state(state), mem(mem) {
 }
 
-MetalContext::~MetalContext() = default;
+MetalContext::~MetalContext() {
+    end_render_pass(true);
+}
+
+void MetalContext::begin_render_pass() {
+    if (render_encoder || !render_target)
+        return;
+
+    command_buffer = [state.command_queue commandBuffer];
+    if (!command_buffer)
+        return;
+
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = render_target->color;
+    pass.colorAttachments[0].loadAction = first_render_pass ? MTLLoadActionClear : MTLLoadActionLoad;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
+    pass.depthAttachment.texture = render_target->depth;
+    pass.depthAttachment.loadAction = first_render_pass && !record.depth_stencil_surface.force_load ? MTLLoadActionClear : MTLLoadActionLoad;
+    pass.depthAttachment.storeAction = MTLStoreActionStore;
+    pass.depthAttachment.clearDepth = record.depth_stencil_surface.background_depth;
+    pass.stencilAttachment.texture = render_target->depth;
+    pass.stencilAttachment.loadAction = first_render_pass && !record.depth_stencil_surface.force_load ? MTLLoadActionClear : MTLLoadActionLoad;
+    pass.stencilAttachment.storeAction = MTLStoreActionStore;
+    pass.stencilAttachment.clearStencil = record.depth_stencil_surface.stencil;
+
+    render_encoder = [command_buffer renderCommandEncoderWithDescriptor:pass];
+    if (!render_encoder) {
+        command_buffer = nil;
+        return;
+    }
+}
+
+void MetalContext::end_render_pass(bool commit) {
+    if (render_encoder) {
+        [render_encoder endEncoding];
+        render_encoder = nil;
+    }
+    if (command_buffer) {
+        if (commit)
+            [command_buffer commit];
+        command_buffer = nil;
+    }
+}
 
 void MetalContext::set_context(MetalRenderTarget *target) {
+    if (render_target != target)
+        end_render_pass(true);
     render_target = target;
     first_render_pass = true;
     record.color_surface.downscale = false;
@@ -493,10 +538,6 @@ void MetalContext::set_texture(uint32_t index, const SceGxmTexture &, bool) {
 
 void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     Ptr<const void> indices, uint32_t count, uint32_t instance_count) {
-    LOG_INFO("GE:R Metal TRACE draw.begin type={} index_type={} count={} instances={} rt={}x{} first_pass={} color_fmt={}",
-        static_cast<uint32_t>(type), static_cast<uint32_t>(index_type), count, instance_count,
-        render_target ? render_target->width : 0, render_target ? render_target->height : 0,
-        first_render_pass, static_cast<uint32_t>(record.color_surface.colorFormat));
     if (!render_target || !record.vertex_program || !record.fragment_program || !count || !indices) {
         LOG_ERROR("GE:R Metal TRACE draw.skip reason=missing_target_program_or_indices");
         return;
@@ -511,92 +552,12 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
         LOG_ERROR("GE:R Metal TRACE draw.fail stage=pipeline");
         return;
     }
-    LOG_INFO("GE:R Metal TRACE draw.pipeline_ready");
 
-    auto cmd = [state.command_queue commandBuffer];
-    if (!cmd) {
-        LOG_ERROR("GE:R Metal TRACE draw.fail stage=command_buffer_create");
+    begin_render_pass();
+    if (!render_encoder)
         return;
-    }
-    command_buffer = cmd;
-    LOG_INFO("GE:R Metal TRACE command_buffer.created");
+    auto enc = render_encoder;
 
-    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
-    pass.colorAttachments[0].texture = render_target->color;
-    pass.colorAttachments[0].loadAction = first_render_pass ? MTLLoadActionClear : MTLLoadActionLoad;
-    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
-    pass.depthAttachment.texture = render_target->depth;
-    pass.depthAttachment.loadAction = first_render_pass && !record.depth_stencil_surface.force_load ? MTLLoadActionClear : MTLLoadActionLoad;
-    pass.depthAttachment.storeAction = MTLStoreActionStore;
-    pass.depthAttachment.clearDepth = record.depth_stencil_surface.background_depth;
-    pass.stencilAttachment.texture = render_target->depth;
-    pass.stencilAttachment.loadAction = first_render_pass && !record.depth_stencil_surface.force_load ? MTLLoadActionClear : MTLLoadActionLoad;
-    pass.stencilAttachment.storeAction = MTLStoreActionStore;
-    pass.stencilAttachment.clearStencil = record.depth_stencil_surface.stencil;
-
-    LOG_INFO("GE:R Metal TRACE render_pass color={}x{} depth={} depth_load={} stencil_load={}",
-        render_target->width, render_target->height, render_target->depth != nil,
-        static_cast<uint32_t>(pass.depthAttachment.loadAction),
-        static_cast<uint32_t>(pass.stencilAttachment.loadAction));
-    auto enc = [cmd renderCommandEncoderWithDescriptor:pass];
-    if (!enc) {
-        LOG_ERROR("GE:R Metal TRACE draw.fail stage=encoder_create");
-        return;
-    }
-    LOG_INFO("GE:R Metal TRACE encoder.created");
-    [enc setRenderPipelineState:pipeline];
-    [enc setDepthStencilState:depth_state_for_draw()];
-    [enc setCullMode:cull_mode(record.cull_mode)];
-    [enc setTriangleFillMode:fill_mode(record.front_polygon_mode)];
-    [enc setFrontFacingWinding:MTLWindingCounterClockwise];
-    [enc setViewport:(MTLViewport){
-        static_cast<double>(record.viewport_x), static_cast<double>(record.viewport_y),
-        static_cast<double>(record.viewport_width), static_cast<double>(record.viewport_height),
-        0.0, 1.0
-    }];
-
-    for (size_t i = 0; i < record.vertex_streams.size(); ++i) {
-        const auto &stream = record.vertex_streams[i];
-        if (!stream.data || !stream.size) continue;
-        auto buffer = make_shared_buffer(state.device, stream.data.get(mem), stream.size);
-        if (buffer)
-            [enc setVertexBuffer:buffer offset:0 atIndex:4 + i];
-    }
-    for (size_t i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; ++i) {
-        if (vertex_textures[i]) {
-            [enc setVertexTexture:vertex_textures[i] atIndex:i];
-            [enc setVertexSamplerState:vertex_samplers[i] atIndex:i];
-        }
-        if (fragment_textures[i]) {
-            [enc setFragmentTexture:fragment_textures[i] atIndex:i];
-            [enc setFragmentSamplerState:fragment_samplers[i] atIndex:i];
-        }
-    }
-
-    // With Vulkan-semantics SPIR-V, render-info buffers are bindings 0/1 and
-    // the GXM user storage buffers are bindings 2/3. This matches the shader
-    // recompiler's descriptor layout and avoids the OpenGL clip-space path.
-    shader::RenderVertUniformBlock vert_info{};
-    vert_info.viewport_flip = record.viewport_flip;
-    vert_info.viewport_flag = record.viewport_flat ? 1.0f : 0.0f;
-    vert_info.screen_width = static_cast<float>(render_target->width);
-    vert_info.screen_height = static_cast<float>(render_target->height);
-    vert_info.z_offset = record.z_offset;
-    vert_info.z_scale = record.z_scale;
-
-    shader::RenderFragUniformBlock frag_info{};
-    frag_info.back_disabled = record.back_side_fragment_program_mode == SCE_GXM_FRAGMENT_PROGRAM_DISABLED;
-    frag_info.front_disabled = record.front_side_fragment_program_mode == SCE_GXM_FRAGMENT_PROGRAM_DISABLED;
-    frag_info.writing_mask = record.writing_mask;
-    frag_info.use_raw_image = 0.0f;
-    frag_info.res_multiplier = state.res_multiplier;
-
-    const uint16_t vertex_texture_count = vp->texture_count;
-    const uint16_t fragment_texture_count = fp->texture_count;
-    LOG_INFO("GE:R Metal TRACE bindings textures vertex={} fragment={} vertex_uniform={} fragment_uniform={} vertex_streams={}",
-        vertex_texture_count, fragment_texture_count,
-        vertex_uniforms[0] != nil, fragment_uniforms[0] != nil, record.vertex_streams.size());
     const size_t vert_header = align(sizeof(vert_info), 8);
     const size_t frag_header = align(sizeof(frag_info), 8);
     const size_t vert_size = vert_header + vertex_texture_count * sizeof(float) * 4;
@@ -662,24 +623,8 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
             indexBuffer:index_buffer indexBufferOffset:0 instanceCount:std::max<uint32_t>(1, instance_count)];
     }
 
-    LOG_INFO("GE:R Metal TRACE draw.submit index_size={} primitive={} index_buffer={} instance_count={}",
-        index_size, static_cast<uint32_t>(type), index_buffer != nil, std::max<uint32_t>(1, instance_count));
-    [enc endEncoding];
-    [cmd addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-        NSError *error = completed.error;
-        LOG_INFO("GE:R Metal TRACE command_buffer.completed status={} error={}",
-            static_cast<uint32_t>(completed.status),
-            error ? (error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "<no-description>") : "none");
-        if (error) {
-            LOG_ERROR("GE:R Metal GPU ERROR domain={} code={} desc={}",
-                error.domain.UTF8String ? error.domain.UTF8String : "<none>",
-                error.code,
-                error.localizedDescription.UTF8String ? error.localizedDescription.UTF8String : "<none>");
-        }
-    }];
-    [cmd commit];
-    LOG_INFO("GE:R Metal TRACE command_buffer.committed");
     first_render_pass = false;
+
 }
 
 id<MTLDepthStencilState> MetalContext::depth_state_for_draw() {
@@ -1226,8 +1171,10 @@ void sync_viewport_flat(MetalContext &context) {
 }
 
 void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNotification &fragment) {
-    if (!command_buffer || !render_target || !record.color_surface.data) return;
-    [command_buffer waitUntilCompleted];
+    if (!render_target || !record.color_surface.data) return;
+    end_render_pass(true);
+    // The command buffer has now been submitted as one batched render pass.
+    // Wait only at the guest-requested surface synchronization point.
 
     // This render target is the exact surface that GXM asked us to synchronize.
     // Preserve the native Metal texture for presentation so the final image does
