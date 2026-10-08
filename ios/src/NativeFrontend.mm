@@ -618,7 +618,7 @@ Vita3KIOSSettings game_settings_or(NSString *titleId, const Vita3KIOSSettings &f
         settings.v_sync = [stored[@"vsync"] boolValue];
     if (stored[@"shader_cache"])
         settings.shader_cache = [stored[@"shader_cache"] boolValue];
-    settings.fps_limit = 60;
+    settings.fps_limit = 30;
     if (stored[@"fpsHack"])
         settings.fps_hack = [stored[@"fpsHack"] boolValue];
     if (stored[@"modulesMode"])
@@ -1551,7 +1551,7 @@ bool vita3k_ios_logging_enabled() {
 }
 
 int vita3k_ios_load_fps_limit() {
-    return 60;
+    return 30;
 }
 
 bool vita3k_ios_consume_double_buffer_default_migration() {
