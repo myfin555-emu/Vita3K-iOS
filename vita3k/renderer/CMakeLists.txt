@@ -48,6 +48,10 @@ add_library(
 )
 
 target_include_directories(renderer PUBLIC include)
+
+if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
+	target_include_directories(renderer PRIVATE ${CMAKE_SOURCE_DIR}/ios/include)
+endif()
 target_link_libraries(renderer PUBLIC display mem stb shader glutil threads config util vkutil overlay)
 target_link_libraries(renderer PRIVATE dialog ddspp SDL3::SDL3 stb ffmpeg xxHash::xxhash concurrentqueue)
 
