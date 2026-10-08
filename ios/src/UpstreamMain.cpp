@@ -70,6 +70,7 @@
 #include <unistd.h>
 
 #include <vita3k_ios/NativeFrontend.h>
+#include <vita3k_ios/PerformanceOptimizations.h>
 #include <vita3k_ios/VirtualController.h>
 
 #include <algorithm>
