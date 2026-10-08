@@ -111,7 +111,8 @@ void AudioState::audio_output(AudioOutPort &out_port, const void *buffer) {
     // here: doing so couples audio clock drift to JIT/render stalls and turns an
     // audio underrun into a main-thread hitch.
     out_port.last_output = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
+        std::chrono::system_clock::now().time_since_epoch())
+                                  .count();
 #else
     uint64_t now = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     uint64_t diff = now - out_port.last_output;
