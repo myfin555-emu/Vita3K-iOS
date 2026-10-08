@@ -1089,6 +1089,21 @@ void VKState::late_init(const Config &cfg, const std::string_view game_id, MemSt
     texture_cache.init(true, texture_folder(), game_id);
 }
 
+void VKState::trim_caches_for_memory_pressure() {
+#if defined(VITA3K_PLATFORM_IOS)
+    if (!device)
+        return;
+
+    // UIKit delivers memory warnings on the main thread. Never destroy Vulkan
+    // objects from there: wait for the render queue, then evict only resources
+    // that are recreated from guest memory on the render thread.
+    device.waitIdle();
+    texture_cache.cleanup();
+    surface_cache.cleanup();
+    LOG_WARN("iOS memory pressure: evicted Vulkan texture/surface caches (rss pressure handled on render thread)");
+#endif
+}
+
 void VKState::cleanup() {
     const auto release_descriptor_sets = [&](FrameDescriptor &descriptor) {
         for (const auto &pool : descriptor.pools)
