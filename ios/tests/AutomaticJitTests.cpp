@@ -20,8 +20,11 @@ int main() {
             require(budget.slots * budget.cache_mb <= 64);
         }
     }
-    require(cpu::automatic_jit_budget(6, 2048 * mib).slots == 3);
+    require(cpu::automatic_jit_budget(6, 2048 * mib).slots == 2);
     require(cpu::automatic_jit_budget(8, 512 * mib).slots == 2);
+    require(cpu::automatic_jit_budget(12, 2048 * mib).slots == 3);
+    require(cpu::automatic_jit_budget(8, 2048 * mib).cache_mb == 12);
+    require(cpu::automatic_jit_budget(8, 512 * mib).cache_mb == 8);
     // More guest threads than physical slots must progress without exceeding
     // the automatic cap. Leases end before a guest could wait on a syscall.
     auto budget = cpu::automatic_jit_budget(6, 2048 * mib);
