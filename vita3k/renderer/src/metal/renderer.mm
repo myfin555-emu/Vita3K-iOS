@@ -1172,7 +1172,7 @@ void sync_viewport_flat(MetalContext &context) {
 }
 
 void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNotification &fragment) {
-    if (!command_buffer || !render_target || !record.color_surface.data) return;
+    if (!render_target || !record.color_surface.data) return;
     auto submitted = command_buffer;
     end_render_pass(true);
     if (submitted)
