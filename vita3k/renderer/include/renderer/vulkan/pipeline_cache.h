@@ -139,6 +139,9 @@ public:
     vk::Pipeline retrieve_pipeline(VKContext &context, SceGxmPrimitiveType &type, bool consider_for_async, MemState &mem);
 
     vk::ShaderModule precompile_shader(const Sha256Hash &hash, bool search_first = true);
+    // iOS keeps a bounded warm shader-module cache so prelaunch warmup does not pin
+    // every historical shader in resident memory. Pipeline binaries remain in VkPipelineCache.
+    void trim_shader_modules(std::size_t max_modules);
 
     void set_async_compilation(bool enable);
 };
