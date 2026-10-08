@@ -247,7 +247,7 @@ NSString *trophy_grade_name(int grade) {
     core.shader_cache = self.shaderCache;
     core.fps_hack = self.fpsHack;
     core.turbo_mode = self.turboMode;
-    core.fps_limit = 60; // iOS always requests 60; the limiter UI was removed.
+    core.fps_limit = 30; // iOS targets stable 30 FPS; the limiter UI was removed.
     core.modules_mode = static_cast<int>(self.modulesMode);
     core.audio_volume = static_cast<int>(self.audioVolume);
     core.texture_cache = self.textureCache;
