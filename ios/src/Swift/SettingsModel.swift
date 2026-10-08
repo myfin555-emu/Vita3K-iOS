@@ -29,7 +29,6 @@ final class SettingsModel: ObservableObject {
     let availableModules: [String]
     @Published var audioVolume: Double
     @Published var textureCache: Bool
-    @Published var emulatorRAMText: String
     @Published var cpuOptimizations: Bool
     @Published var ngsAudio: Bool
     @Published var asyncPipelineCompilation: Bool
@@ -74,7 +73,6 @@ final class SettingsModel: ObservableObject {
         availableModules = Array(Set(settings.availableModules + settings.lleModules)).sorted()
         audioVolume = Double(min(100, max(0, settings.audioVolume)))
         textureCache = settings.textureCache
-        emulatorRAMText = String(settings.emulatorRAMMB)
         cpuOptimizations = settings.cpuOptimizations
         ngsAudio = settings.ngsAudio
         asyncPipelineCompilation = settings.asyncPipelineCompilation
@@ -98,8 +96,7 @@ final class SettingsModel: ObservableObject {
         return value
     }
 
-    var validEmulatorRAMMB: Int? { wholeNumber(emulatorRAMText, in: 512...2048) }
-    var canSave: Bool { isPerGame || validEmulatorRAMMB != nil }
+    var canSave: Bool { true }
 
     func setModule(_ name: String, enabled: Bool) {
         lleModules.removeAll { $0 == name }
@@ -130,9 +127,6 @@ final class SettingsModel: ObservableObject {
         settings.lleModules = lleModules
         settings.audioVolume = Int(audioVolume)
         settings.textureCache = textureCache
-        if !isPerGame, let ram = validEmulatorRAMMB {
-            settings.emulatorRAMMB = ram
-        }
         settings.cpuOptimizations = cpuOptimizations
         settings.ngsAudio = ngsAudio
         settings.asyncPipelineCompilation = asyncPipelineCompilation
@@ -153,6 +147,25 @@ final class SettingsModel: ObservableObject {
         case .perGame(let titleID, _):
             Bridge.apply(settings, forTitle: titleID)
         }
+    }
+
+    /// Restores the lightweight iOS-facing settings to stable defaults.
+    func resetToDefaults() {
+        resolutionMultiplier = 1.0
+        vSync = true
+        shaderCache = true
+        fpsHack = false
+        turboMode = false
+        modulesMode = 0
+        audioVolume = 100
+        textureCache = true
+        cpuOptimizations = true
+        ngsAudio = true
+        asyncPipelineCompilation = true
+        anisotropicFiltering = 4
+        highAccuracy = true
+        surfaceSync = false
+        doubleBuffer = false
     }
 
     /// Drops this title's overrides so it follows the global settings again.
