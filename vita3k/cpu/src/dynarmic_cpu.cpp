@@ -82,7 +82,7 @@ namespace {
 std::size_t ios_jit_cache_size = 16 * 1024 * 1024;
 }
 void set_ios_jit_cache_size(std::size_t bytes) {
-    ios_jit_cache_size = std::clamp<std::size_t>(bytes, 16 * 1024 * 1024, 128 * 1024 * 1024);
+    ios_jit_cache_size = std::clamp<std::size_t>(bytes, 8 * 1024 * 1024, 128 * 1024 * 1024);
 }
 std::size_t get_ios_jit_cache_size() {
     return ios_jit_cache_size;
@@ -509,8 +509,9 @@ int DynarmicCPU::run() {
         LOG_CRITICAL("Cannot (re)create JIT code cache for thread {}: {}", parent->thread_id, e.what());
         return -1;
     }
-    // Bounded slices let one slot serve spinning and waiting guest threads.
-    cb->ticks_remaining = 10000;
+    // Keep a guest on the worker long enough to amortize JIT entry/context
+    // handoff, while still yielding regularly for other Vita threads.
+    cb->ticks_remaining = 50000;
     halted = false;
     break_ = false;
     parent->svc_called = false;
