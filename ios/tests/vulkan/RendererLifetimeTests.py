@@ -73,6 +73,7 @@ struct ColorSurfaceCacheInfo {
     std::unique_ptr<Buffer> copy_buffer = std::make_unique<Buffer>();
     void *sws_context = reinterpret_cast<void *>(1);
     bool need_post_surface_sync = true, need_buffer_sync = true;
+    bool half_resolution_readback = true;
     std::shared_ptr<SurfaceReadback> pending_readback;
     int pixels = 0;
 };
@@ -181,7 +182,7 @@ int main() {
     State state;
     ColorSurfaceCacheInfo old;
     state.surface_cache.destroy_surface(old);
-    if (old.blit_image || old.copy_buffer || old.sws_context || old.need_post_surface_sync || old.need_buffer_sync) {
+    if (old.blit_image || old.copy_buffer || old.sws_context || old.need_post_surface_sync || old.need_buffer_sync || old.half_resolution_readback) {
         std::cerr << "Recycled render target retained old readback extent/format resources\n";
         return 1;
     }
