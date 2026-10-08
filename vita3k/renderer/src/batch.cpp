@@ -21,6 +21,9 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 #include <util/ios_performance.h>
+#if defined(VITA3K_PLATFORM_IOS)
+#include <vita3k_ios/PerformanceOptimizations.h>
+#endif
 
 #include <renderer/vulkan/types.h>
 
@@ -188,6 +191,12 @@ void reset_command_list(CommandList &command_list) {
 static void render_loop(renderer::State &state, DisplayState &display, GxmState &gxm, MemState &mem, Config &config) try {
 #ifdef VITA3K_PLATFORM_IOS
     util::IOSPerformanceThread performance;
+    constexpr auto kFrameBudget = std::chrono::microseconds(33333);
+    auto next_frame_deadline = std::chrono::steady_clock::now();
+    auto metrics_window_start = next_frame_deadline;
+    uint64_t metrics_frames = 0;
+    double metrics_frame_ms = 0.0;
+    uint64_t metrics_draw_calls_start = state.draw_calls.load(std::memory_order_relaxed);
 #endif
     if (state.precompile_requested) {
         auto progress_overlay = state.overlay_manager
@@ -259,6 +268,11 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
 #endif
         if (!state.set_current())
             break;
+
+#ifdef VITA3K_PLATFORM_IOS
+        if (vita3k_ios::MemoryMonitor::consume_gc_request())
+            state.trim_caches_for_memory_pressure();
+#endif
 
         process_batches(state, state.features, mem, config, 500);
 
