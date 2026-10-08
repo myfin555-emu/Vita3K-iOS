@@ -29,7 +29,7 @@ index bfa87d96..0314a4fb 100644
  #    include <unistd.h>
  #else
  #    include <sys/mman.h>
-@@ -23,6 +31,201 @@
+@@ -23,6 +31,212 @@
  
  namespace oaknut {
  
@@ -242,7 +242,7 @@ index bfa87d96..0314a4fb 100644
  class CodeBlock {
  public:
      explicit CodeBlock(std::size_t size)
-@@ -32,7 +235,31 @@ public:
+@@ -32,7 +235,32 @@ public:
          m_memory = (std::uint32_t*)VirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
  #elif defined(__APPLE__)
  #    if TARGET_OS_IPHONE
@@ -386,7 +386,7 @@ diff --git a/src/dynarmic/common/spin_lock_arm64.cpp b/src/dynarmic/common/spin_
 index ccf807e2..19e57822 100644
 --- a/src/dynarmic/common/spin_lock_arm64.cpp
 +++ b/src/dynarmic/common/spin_lock_arm64.cpp
-@@ -4,6 +4,9 @@
+@@ -4,6 +4,10 @@
   */
  
  #include <mutex>
@@ -405,7 +405,7 @@ index ccf807e2..19e57822 100644
  
  namespace {
  
-@@ -72,15 +76,28 @@ void SpinLockImpl::Initialize() {
+@@ -72,15 +76,30 @@ void SpinLockImpl::Initialize() {
  }
  
  }  // namespace
