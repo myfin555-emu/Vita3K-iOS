@@ -1,10 +1,16 @@
 #import <Foundation/Foundation.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <algorithm>
+#include <cstddef>
 #include <vita3k_ios/IOSJIT.h>
 
 bool vita3k_ios_can_allocate_jit() {
-    const size_t size = static_cast<size_t>(getpagesize());
+    // iOS arm64 user-space uses a 16 KiB page granularity. Query the
+    // runtime rather than assuming a desktop 4 KiB page, and keep the probe
+    // large enough for both current and future Apple page configurations.
+    const long runtime_page = sysconf(_SC_PAGESIZE);
+    const size_t size = std::max<size_t>(runtime_page > 0 ? static_cast<size_t>(runtime_page) : 16 * 1024, 16 * 1024);
     void *memory = mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC,
         MAP_PRIVATE | MAP_ANON, -1, 0);
     if (memory == MAP_FAILED)
