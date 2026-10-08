@@ -150,8 +150,6 @@ bool AppSessionController::load_and_run() {
     if (run_app(emuenv, main_module_id, active_launch_request) != Success)
         return false;
 
-    prepare_game_launch_overlay(emuenv);
-
     // When enabled, the guest is paused immediately after module startup while
     // the renderer warms the shader cache. This keeps the expensive known-shader
     // work out of active gameplay without inventing a second compiler.
