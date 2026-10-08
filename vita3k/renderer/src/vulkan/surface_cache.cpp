@@ -1366,13 +1366,21 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
     bool half_resolution_readback = false;
 #ifdef VITA3K_PLATFORM_IOS
     const auto format = last_written_surface->texture.format;
+    // Broaden beyond pure UNORM: BGRA and A2R10G10B10 are common on Vita and
+    // still byte-replicable when the encoded layout is preserved. Prefer the
+    // half-res path whenever the surface is an exact 2x downsample (the
+    // typical 0.5x multiplier case) so A11 stages far less data.
+    // UNORM / packed UNORM only — sRGB needs a proper gamma-aware blit.
     const bool byte_preserving_format = format == vk::Format::eR8Unorm
-        || format == vk::Format::eR8G8Unorm || format == vk::Format::eR8G8B8A8Unorm;
-    half_resolution_readback = !state.features.enable_memory_mapping && byte_preserving_format
-        && !format_need_additional_memory(last_written_surface->format)
-        && can_expand_half_resolution(last_written_surface->width, last_written_surface->height,
-            last_written_surface->original_width, last_written_surface->original_height,
-            gxm::bits_per_pixel(last_written_surface->format) / 8);
+        || format == vk::Format::eR8G8Unorm || format == vk::Format::eR8G8B8A8Unorm
+        || format == vk::Format::eB8G8R8A8Unorm || format == vk::Format::eA8B8G8R8UnormPack32;
+    const bool exact_half = can_expand_half_resolution(last_written_surface->width,
+        last_written_surface->height, last_written_surface->original_width,
+        last_written_surface->original_height,
+        gxm::bits_per_pixel(last_written_surface->format) / 8);
+    half_resolution_readback = !state.features.enable_memory_mapping && exact_half
+        && byte_preserving_format
+        && !format_need_additional_memory(last_written_surface->format);
 #endif
     // A resize/reconfiguration must not reuse a differently-sized readback.
     if (last_written_surface->half_resolution_readback != half_resolution_readback && last_written_surface->copy_buffer) {
