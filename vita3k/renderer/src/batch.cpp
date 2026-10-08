@@ -23,6 +23,9 @@
 #include <util/ios_performance.h>
 
 #include <renderer/vulkan/types.h>
+#ifdef VITA3K_PLATFORM_IOS
+#include <renderer/vulkan/state.h>
+#endif
 
 #include <config/state.h>
 #include <display/state.h>
@@ -222,6 +225,14 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
         }
 
         state.precompile_queue.clear();
+
+#ifdef VITA3K_PLATFORM_IOS
+        // Warmup should not leave the entire historical shader set resident. The
+        // Vulkan pipeline cache is persisted separately and remains the fast path
+        // for pipelines discovered again during gameplay.
+        if (state.current_backend == Backend::Vulkan)
+            static_cast<vulkan::VKState &>(state).pipeline_cache.trim_shader_modules(128);
+#endif
 
         if (progress_overlay) {
             if (!state.set_current()) {
