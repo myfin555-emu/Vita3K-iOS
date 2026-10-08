@@ -149,7 +149,11 @@ void SinglePassScreenFilter::create_graphics_pipeline() {
     vertex_input.setVertexAttributeDescriptions(attr_descr);
 
     vk::PipelineInputAssemblyStateCreateInfo input_assembly{
-        .topology = vk::PrimitiveTopology::eTriangleStrip
+        .topology = vk::PrimitiveTopology::eTriangleStrip,
+#ifdef VITA3K_PLATFORM_IOS
+        // Metal requires restart for strips. This is a non-indexed quad.
+        .primitiveRestartEnable = true
+#endif
     };
     vk::PipelineViewportStateCreateInfo viewport_state{
         .viewportCount = 1,

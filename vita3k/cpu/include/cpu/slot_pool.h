@@ -33,10 +33,27 @@ namespace cpu {
 // cache. The lease must end before dispatching a guest syscall that can block.
 class SlotPool {
     std::mutex mutex;
-    std::condition_variable changed;
     std::vector<bool> busy;
-    std::deque<uint64_t> waiting;
-    uint64_t next_ticket = 0;
+    struct Waiter {
+        std::condition_variable changed;
+    };
+    std::deque<Waiter *> waiting;
+
+    std::optional<std::size_t> free_slot(std::optional<std::size_t> preferred) const {
+        if (preferred && *preferred < busy.size() && !busy[*preferred])
+            return preferred;
+        const auto it = std::find(busy.begin(), busy.end(), false);
+        if (it == busy.end())
+            return std::nullopt;
+        return static_cast<std::size_t>(it - busy.begin());
+    }
+
+    // Notify while holding mutex: waiters live on acquire()'s stack and must
+    // not leave the queue before their condition variable has been signalled.
+    void notify_next() {
+        if (!waiting.empty() && free_slot(std::nullopt))
+            waiting.front()->changed.notify_one();
+    }
 
 public:
     explicit SlotPool(std::size_t count)
@@ -45,34 +62,46 @@ public:
             throw std::invalid_argument("JIT slot count must be positive");
     }
 
-    std::optional<std::size_t> acquire(const std::atomic_bool &cancelled) {
+    std::optional<std::size_t> acquire(const std::atomic_bool &cancelled,
+        std::optional<std::size_t> preferred = std::nullopt) {
         std::unique_lock lock(mutex);
-        const auto ticket = next_ticket++;
-        waiting.push_back(ticket);
-        changed.wait(lock, [&] {
-            return cancelled.load() || (waiting.front() == ticket && std::find(busy.begin(), busy.end(), false) != busy.end());
+        if (cancelled.load())
+            return std::nullopt;
+        // Most syscall returns encounter no contention. Avoid queue allocation
+        // and any wakeups in that case, without overtaking queued guests.
+        if (waiting.empty()) {
+            if (const auto index = free_slot(preferred)) {
+                busy[*index] = true;
+                return index;
+            }
+        }
+        Waiter waiter;
+        waiting.push_back(&waiter);
+        waiter.changed.wait(lock, [&] {
+            return cancelled.load() || (waiting.front() == &waiter && free_slot(preferred));
         });
-        waiting.erase(std::find(waiting.begin(), waiting.end(), ticket));
+        waiting.erase(std::find(waiting.begin(), waiting.end(), &waiter));
         if (cancelled.load()) {
-            changed.notify_all();
+            notify_next();
             return std::nullopt;
         }
-        const auto index = std::find(busy.begin(), busy.end(), false) - busy.begin();
-        busy[index] = true;
-        changed.notify_all();
-        return static_cast<std::size_t>(index);
+        const auto index = free_slot(preferred);
+        busy[*index] = true;
+        notify_next();
+        return index;
     }
 
     void release(std::size_t index) {
         std::lock_guard lock(mutex);
         busy.at(index) = false;
-        changed.notify_all();
+        notify_next();
     }
 
     void wake() {
         // Pair with the wait mutex to avoid a lost cancellation notification.
         std::lock_guard lock(mutex);
-        changed.notify_all();
+        for (auto *waiter : waiting)
+            waiter->changed.notify_one();
     }
 };
 } // namespace cpu

@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -96,6 +97,9 @@ class PooledCPU final : public CPUInterface {
     std::atomic<DynarmicCPU *> signal_active{ nullptr };
     static_assert(std::atomic<DynarmicCPU *>::is_always_lock_free);
     std::atomic_bool stopped{ false };
+    // Reuse warm translations when possible, but never wait for a preferred
+    // worker while another slot is free. Only this guest's run thread uses it.
+    std::optional<std::size_t> preferred_slot;
     bool breakpoint = false;
     bool log_code = false;
     bool log_mem = false;
@@ -104,7 +108,7 @@ class PooledCPU final : public CPUInterface {
         parent->svc_called = false;
         if (stopped.exchange(false))
             return 0;
-        const auto index = pool->admission.acquire(stopped);
+        const auto index = pool->admission.acquire(stopped, preferred_slot);
         if (!index) {
             stopped.store(false);
             return 0;
@@ -114,6 +118,7 @@ class PooledCPU final : public CPUInterface {
             std::size_t index;
             ~Lease() { slots.release(index); }
         } lease{ pool->admission, *index };
+        preferred_slot = *index;
         auto &worker = *pool->workers[*index];
         try {
             {

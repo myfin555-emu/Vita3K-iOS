@@ -326,7 +326,12 @@ void OverlayRenderer::create_pipeline(vk::RenderPass render_pass) {
 
     for (int i = 0; i < NUM_TOPOLOGIES; ++i) {
         vk::PipelineInputAssemblyStateCreateInfo input_assembly{
-            .topology = topologies[i]
+            .topology = topologies[i],
+#ifdef VITA3K_PLATFORM_IOS
+            // Overlay draws are non-indexed; enable Metal's mandatory restart
+            // on strip/fan topologies without requiring list-restart support.
+            .primitiveRestartEnable = topologies[i] != vk::PrimitiveTopology::eLineList
+#endif
         };
 
         vk::GraphicsPipelineCreateInfo pipeline_info{

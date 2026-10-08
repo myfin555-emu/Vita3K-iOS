@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 project(Vita3KiOSNativeSupportTests LANGUAGES CXX)
 enable_testing()
+add_executable(vblank_clock_tests VblankClockTests.cpp)
+target_compile_features(vblank_clock_tests PRIVATE cxx_std_17)
+target_include_directories(vblank_clock_tests PRIVATE ../../vita3k/display/include)
+add_test(NAME vblank_clock_tests COMMAND vblank_clock_tests)
+
 add_executable(ime_text_tests IMETextTests.cpp)
 target_compile_features(ime_text_tests PRIVATE cxx_std_17)
 target_include_directories(ime_text_tests PRIVATE ../../vita3k/ime/include)
@@ -51,6 +56,8 @@ target_include_directories(pvrtc_decode_tests PRIVATE ../../vita3k/renderer/incl
 add_test(NAME pvrtc_decode_tests COMMAND pvrtc_decode_tests)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME presentation_pipeline_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/PresentationPipelineTests.py ${CMAKE_CXX_COMPILER})
+set_tests_properties(presentation_pipeline_tests PROPERTIES TIMEOUT 30)
 add_test(NAME thread_wait_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ThreadWaitTests.py ${CMAKE_CXX_COMPILER})
 set_tests_properties(thread_wait_tests PROPERTIES TIMEOUT 30)
 

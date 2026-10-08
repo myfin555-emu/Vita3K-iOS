@@ -19,6 +19,7 @@
 
 #include <dialog/state.h>
 #include <display/state.h>
+#include <display/vblank_clock.h>
 #include <emuenv/state.h>
 #include <kernel/state.h>
 #include <renderer/state.h>
@@ -37,6 +38,7 @@ static constexpr int max_expected_swapchain_size = 6;
 
 static void vblank_sync_thread(EmuEnvState &emuenv) {
     DisplayState &display = emuenv.display;
+    auto deadline = std::chrono::steady_clock::now();
 
     while (!display.abort.load()) {
         {
@@ -75,9 +77,8 @@ static void vblank_sync_thread(EmuEnvState &emuenv) {
                 }
             }
         }
-        const auto time_ms = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        const auto time_left = TARGET_MICRO_PER_FRAME - (time_ms % TARGET_MICRO_PER_FRAME);
-        std::this_thread::sleep_for(std::chrono::microseconds(time_left));
+        deadline = display::next_vblank_deadline(deadline, std::chrono::steady_clock::now());
+        std::this_thread::sleep_until(deadline);
     }
 }
 
