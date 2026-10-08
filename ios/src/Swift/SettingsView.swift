@@ -29,6 +29,7 @@ struct SettingsView: View {
 
     @State private var showingResetConfirmation = false
     @State private var showingRuntimeNotice = false
+    @State private var showingDefaultReset = false
 
     init(scope: SettingsModel.Scope, onFinish: @escaping () -> Void) {
         _model = StateObject(wrappedValue: SettingsModel(scope: scope))
@@ -49,7 +50,6 @@ struct SettingsView: View {
                 videoSection
                 graphicsSection
                 speedSection
-                if !model.isPerGame { jitMemorySection }
                 modulesSection
                 audioSection
                 if !model.isPerGame {
@@ -61,6 +61,17 @@ struct SettingsView: View {
                     perGameResetSection
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                if !model.isPerGame {
+                    Button("Reset to Default Settings", role: .destructive) {
+                        showingDefaultReset = true
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: model.isPerGame)
             .navigationTitle(model.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -85,6 +96,15 @@ struct SettingsView: View {
             }
             .alert("Developer mode enabled", isPresented: $showingRuntimeNotice) {
                 Button("OK", role: .cancel) {}
+            }
+            .confirmationDialog("Reset all settings to their defaults?", isPresented: $showingDefaultReset, titleVisibility: .visible) {
+                Button("Reset", role: .destructive) {
+                    model.resetToDefaults()
+                    model.save()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This resets the lightweight iOS settings. Game files and saves are not affected.")
             }
         }
     }
@@ -152,6 +172,7 @@ struct SettingsView: View {
         Section("Video") {
             Toggle("V-Sync", isOn: $model.vSync)
                 .accessibilityHint("Synchronizes presentation to the display.")
+                .compatibleOnChange(of: model.vSync) { _, _ in model.save() }
             Toggle("Texture cache", isOn: $model.textureCache)
             Toggle("Shader cache", isOn: $model.shaderCache)
                 .accessibilityHint("Reuses compiled shaders between sessions. Turn off to force regeneration when diagnosing a graphics fault.")
@@ -173,8 +194,10 @@ struct SettingsView: View {
                 Text("2×").font(.caption2)
             }
             .accessibilityValue(model.resolutionLabel)
+            .compatibleOnChange(of: model.resolutionMultiplier) { _, _ in model.save() }
 
             Toggle("High accuracy", isOn: $model.highAccuracy)
+                .compatibleOnChange(of: model.highAccuracy) { _, _ in model.save() }
             Toggle("Surface sync", isOn: $model.surfaceSync)
             Toggle("Double buffer", isOn: $model.doubleBuffer)
             Toggle("Async pipeline compilation", isOn: $model.asyncPipelineCompilation)
@@ -209,31 +232,6 @@ struct SettingsView: View {
                 Text("Turbo mode prioritizes emulation, rendering and shader workers using iOS scheduling. It does not force GPU clocks or bypass thermal limits. Higher priority may increase power use.")
             }
             Text("FPS Hack reduces multi-vblank waits to one. Some 30 FPS games can reach 60 FPS; others may run too fast or show timing problems. Turn it off if this happens. It does not increase GPU power.")
-        }
-    }
-
-    private var jitMemorySection: some View {
-        Section {
-            LabeledContent("JIT allocation", value: "Automatic")
-            numericField("Emulated RAM budget (MB)", text: $model.emulatorRAMText)
-            if !model.canSave {
-                Text("Use a whole number from 512 to 2048 MB for emulated RAM.")
-                    .foregroundStyle(.red)
-            }
-        } header: {
-            Text("JIT & Memory")
-        } footer: {
-            Text("JIT workers are selected for this device and shared by guest threads. Translation caches are created on demand and reused within a 32–64 MB code budget. Emulated RAM is a separate guest allocation budget; graphics and iOS use additional memory. Restart the app after changing emulated RAM.")
-        }
-    }
-
-    private func numericField(_ title: String, text: Binding<String>) -> some View {
-        HStack {
-            Text(title)
-            TextField("", text: text)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.trailing)
-                .accessibilityLabel(title)
         }
     }
 
