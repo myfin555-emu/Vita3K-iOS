@@ -489,7 +489,7 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
         // Keep inactive MSL compact in RAM; the pipeline cache still retains
         // enough data for export/reload.
         const int32_t shader_compression = 1; // MoltenVK LZFSE
-        const VkBool32 synchronous_queue_submits = VK_TRUE;
+        const VkBool32 synchronous_queue_submits = VK_FALSE;
         const uint32_t max_active_metal_command_buffers = 8;
         const int32_t fast_math = 2; // fast math, but preserve shader opt-outs
         const VkBool32 metal_argument_buffers = VK_TRUE;
