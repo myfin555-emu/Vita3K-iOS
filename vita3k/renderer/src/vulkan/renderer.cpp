@@ -1106,13 +1106,13 @@ void VKState::trim_caches_for_memory_pressure() {
     if (!device)
         return;
 
-    // UIKit delivers memory warnings on the main thread. Never destroy Vulkan
-    // objects from there: wait for the render queue, then evict only resources
-    // that are recreated from guest memory on the render thread.
-    device.waitIdle();
-    texture_cache.cleanup();
-    surface_cache.cleanup();
-    LOG_WARN("iOS memory pressure: evicted Vulkan texture/surface caches (rss pressure handled on render thread)");
+    // process_batches can leave an unfinished scene between render-loop
+    // iterations. waitIdle only drains submitted GPU work: recorded commands,
+    // texture bindings, cached descriptors and pending CPU readbacks still own
+    // these resources. cleanup() is teardown, not a live-cache eviction API.
+    // Defer scratch reclamation to new_frame, after its frame-fence wait.
+    texture_cache.trim_requested = true;
+    LOG_WARN("iOS memory pressure: queued upload-buffer reclamation at the next frame boundary; retaining live textures and surfaces");
 #endif
 }
 

@@ -82,6 +82,7 @@ void VKTextureCache::cleanup() {
 
     staging_idx = 0;
     last_waited_scene = 0;
+    trim_requested = false;
     current_texture = nullptr;
     gxm_texture = nullptr;
     cmd_buffer = nullptr;
@@ -194,9 +195,10 @@ void sync_texture(VKContext &context, MemState &mem, std::size_t index, SceGxmTe
 
 void VKTextureCache::trim_staging_buffers(uint64_t frame_timestamp) {
     // Called after new_frame has waited for the recycled frame's fences.
-    // Keep recently used buffers warm; discard only large, idle upload scratch.
+    // Normally keep warm scratch. Under pressure release all retired uploads,
+    // while preserving live images/samplers and buffers from in-flight frames.
     for (auto &staging : staging_buffers) {
-        if (!should_release_staging_buffer(staging.buffer.size, staging.frame_timestamp, frame_timestamp))
+        if (!should_release_staging_buffer(staging.buffer.size, staging.frame_timestamp, frame_timestamp, trim_requested))
             continue;
         staging.buffer.destroy();
         staging.buffer.size = 0;
@@ -205,6 +207,7 @@ void VKTextureCache::trim_staging_buffers(uint64_t frame_timestamp) {
         staging.scene_timestamp = ~uint64_t{ 0 };
         staging.waiting_fence = nullptr;
     }
+    trim_requested = false;
 }
 
 void VKTextureCache::prepare_staging_buffer(bool is_configure) {

@@ -38,8 +38,26 @@ struct Staging {
 };
 struct VKTextureCache {
     Staging staging_buffers[6];
+    bool trim_requested = false;
+    int cleanups = 0;
+    void cleanup() { ++cleanups; }
     void trim_staging_buffers(uint64_t frame_timestamp);
 };
+struct VKState {
+    struct Device {
+        bool valid = true;
+        int waits = 0;
+        explicit operator bool() const { return valid; }
+        void waitIdle() { ++waits; }
+    } device;
+    VKTextureCache texture_cache;
+    struct SurfaceCache {
+        int cleanups = 0;
+        void cleanup() { ++cleanups; }
+    } surface_cache;
+    void trim_caches_for_memory_pressure();
+};
+#define LOG_WARN(...) ((void)0)
 namespace spdlog {
 namespace level { enum level_enum { info, debug, warn, off }; }
 level::level_enum actual = level::info;
@@ -55,8 +73,46 @@ source += function('vita3k/util/src/logging.cpp', 'void set_enabled(')
 source += function('vita3k/util/src/logging.cpp', 'bool is_enabled(')
 source += '\n}\n'
 source += function('vita3k/renderer/src/vulkan/texture.cpp', 'void VKTextureCache::trim_staging_buffers(')
+source += function('vita3k/renderer/src/vulkan/renderer.cpp', 'void VKState::trim_caches_for_memory_pressure(')
 source += r'''
 int main() {
+    // A UIKit warning can arrive with a recorded but unsubmitted scene, live
+    // descriptor bindings and CPU readbacks. GPU idle alone cannot retire them.
+    VKState state;
+    auto &uploads = state.texture_cache;
+    const uint64_t timestamps[] = { 6, 7, 8, 9, 10, ~uint64_t{0} };
+    for (int i = 0; i < 6; ++i) {
+        uploads.staging_buffers[i].buffer.size = 512 * 1024;
+        uploads.staging_buffers[i].frame_timestamp = timestamps[i];
+        uploads.staging_buffers[i].scene_timestamp = 42;
+        uploads.staging_buffers[i].used_so_far = 128;
+    }
+    state.trim_caches_for_memory_pressure();
+    state.trim_caches_for_memory_pressure(); // warnings coalesce until retirement
+    assert(uploads.cleanups == 0 && state.surface_cache.cleanups == 0);
+    assert(state.device.waits == 0);
+    for (auto &staging : uploads.staging_buffers) assert(staging.buffer.destroyed == 0);
+#ifdef VITA3K_PLATFORM_IOS
+    assert(uploads.trim_requested);
+#else
+    assert(!uploads.trim_requested);
+#endif
+    // Frame 10 may reclaim frame 7 and older only after the frame-slot wait.
+    uploads.trim_staging_buffers(10);
+    assert(!uploads.trim_requested);
+    for (int i = 0; i < 6; ++i) {
+#ifdef VITA3K_PLATFORM_IOS
+        assert(uploads.staging_buffers[i].buffer.destroyed == (i < 2 ? 1 : 0));
+#else
+        assert(uploads.staging_buffers[i].buffer.destroyed == 0);
+#endif
+    }
+    uploads.trim_staging_buffers(11); // pressure consumed; warm buffers retained
+    assert(uploads.staging_buffers[2].buffer.destroyed == 0);
+    state.device.valid = false;
+    state.trim_caches_for_memory_pressure();
+    assert(!uploads.trim_requested);
+
     // Cold disabled -> config load must remain disabled -> reenable original level.
     logging::set_enabled(false);
     assert(!logging::is_enabled());
