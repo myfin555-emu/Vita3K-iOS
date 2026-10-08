@@ -24,7 +24,7 @@ constexpr AutomaticJitBudget automatic_jit_budget(unsigned host_cores, uint64_t 
     // ARM64 cache has an ~8 MiB minimum, so use 8 MiB under tighter headroom
     // and 12 MiB when memory pressure is lower.
     const auto memory_slots = std::clamp<uint64_t>(available_bytes / (384ULL * 1024 * 1024), 2, 3);
-    const auto cache_mb = available_bytes >= 1024ULL * 1024 * 1024 ? 12 : 8;
+    const std::size_t cache_mb = available_bytes >= 1024ULL * 1024 * 1024 ? 12 : 8;
     return { std::min<std::size_t>(cpu_slots, memory_slots), cache_mb };
 }
 } // namespace cpu
