@@ -544,10 +544,10 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
         const auto jit_budget = cpu::automatic_jit_budget(
             std::thread::hardware_concurrency(), os_proc_available_memory());
         // Migrate old manual settings, including the 37-slot default.
-        cfg.ios_jit_threads = static_cast<int>(jit_budget.slots);
+        cfg.ios_jit_threads = std::min<int>(2, static_cast<int>(jit_budget.slots));
         cfg.ios_jit_cache_mb = static_cast<int>(jit_budget.cache_mb);
         LOG_INFO("iOS automatic JIT: {} shared slots, {} MiB code cache maximum, allocated on demand",
-            jit_budget.slots, jit_budget.slots * jit_budget.cache_mb);
+            cfg.ios_jit_threads, cfg.ios_jit_threads * jit_budget.cache_mb);
         // A11/iOS Jetsam safety: keep guest RAM below the app's physical-memory
         // ceiling; renderer/JIT/audio/Metal allocations sit outside this pool.
         cfg.ios_emulator_ram_mb = std::clamp(cfg.ios_emulator_ram_mb, 512, 768);
