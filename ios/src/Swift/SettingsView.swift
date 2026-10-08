@@ -178,6 +178,8 @@ struct SettingsView: View {
             Toggle("Surface sync", isOn: $model.surfaceSync)
             Toggle("Double buffer", isOn: $model.doubleBuffer)
             Toggle("Async pipeline compilation", isOn: $model.asyncPipelineCompilation)
+            Toggle("Precompile shaders before launch", isOn: $model.precompileShadersBeforeLaunch)
+                .accessibilityHint("Compiles the shaders already known by the cache before gameplay starts. New shaders discovered during gameplay still compile as needed.")
 
             Picker("Anisotropic filtering", selection: $model.anisotropicFiltering) {
                 ForEach(SettingsModel.anisotropicOptions, id: \.self) { value in
