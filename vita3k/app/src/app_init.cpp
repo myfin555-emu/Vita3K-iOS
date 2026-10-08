@@ -603,7 +603,7 @@ void apply_renderer_config(EmuEnvState &emuenv) {
 
     r.res_multiplier = cc.resolution_multiplier;
     r.set_vsync_state(cc.v_sync);
-// Surface sync is independent of high accuracy. High accuracy still enables
+    // Surface sync is independent of high accuracy. High accuracy still enables
     // shader interlock / disables texture viewport; surface sync is the
     // expensive GPU→CPU readback path (especially on iOS staging buffers) and
     // must remain a user choice for performance.
@@ -703,7 +703,7 @@ void apply_runtime_settings(EmuEnvState &emuenv) {
 
     auto &r = *emuenv.renderer;
     r.set_vsync_state(cc.v_sync);
-// Surface sync is independent of high accuracy. High accuracy still enables
+    // Surface sync is independent of high accuracy. High accuracy still enables
     // shader interlock / disables texture viewport; surface sync is the
     // expensive GPU→CPU readback path (especially on iOS staging buffers) and
     // must remain a user choice for performance.
