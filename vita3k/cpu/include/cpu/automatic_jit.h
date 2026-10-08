@@ -16,10 +16,15 @@ struct AutomaticJitBudget {
 // borrow these workers only while executing, and allocate translations lazily.
 // Never multiply caches by the number of threads created by the game.
 constexpr AutomaticJitBudget automatic_jit_budget(unsigned host_cores, uint64_t available_bytes) {
-    const auto cpu_slots = std::clamp<std::size_t>(host_cores / 2, 2, 4);
-    // Spend at most 1/16 of launch headroom on translated code (32-64 MiB).
-    // Zero means the OS could not provide an estimate; use the minimum budget.
-    const auto memory_slots = std::clamp<uint64_t>(available_bytes / (256ULL * 1024 * 1024), 2, 4);
-    return { std::min<std::size_t>(cpu_slots, memory_slots), 16 };
+    // iOS already has renderer/audio/UI threads competing for host CPU time.
+    // Two or three persistent JIT workers are enough for Vita titles while
+    // avoiding one translated-code cache per host core group.
+    const auto cpu_slots = std::clamp<std::size_t>(host_cores / 3, 2, 3);
+    // Keep translated code within a small resident-memory budget. Dynarmic's
+    // ARM64 cache has an ~8 MiB minimum, so use 8 MiB under tighter headroom
+    // and 12 MiB when memory pressure is lower.
+    const auto memory_slots = std::clamp<uint64_t>(available_bytes / (384ULL * 1024 * 1024), 2, 3);
+    const auto cache_mb = available_bytes >= 1024ULL * 1024 * 1024 ? 12 : 8;
+    return { std::min<std::size_t>(cpu_slots, memory_slots), cache_mb };
 }
 } // namespace cpu
