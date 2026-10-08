@@ -79,6 +79,7 @@ struct Config {
         bool v_sync = true;
         int anisotropic_filtering = 1;
         bool async_pipeline_compilation = true;
+        bool precompile_shaders_before_launch = false;
         bool import_textures = false;
         bool export_textures = false;
         bool export_as_png = false;
