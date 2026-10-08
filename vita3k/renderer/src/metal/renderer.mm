@@ -537,10 +537,6 @@ void MetalContext::set_texture(uint32_t index, const SceGxmTexture &, bool) {
 
 void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     Ptr<const void> indices, uint32_t count, uint32_t instance_count) {
-    LOG_INFO("GE:R Metal TRACE draw.begin type={} index_type={} count={} instances={} rt={}x{} first_pass={} color_fmt={}",
-        static_cast<uint32_t>(type), static_cast<uint32_t>(index_type), count, instance_count,
-        render_target ? render_target->width : 0, render_target ? render_target->height : 0,
-        first_render_pass, static_cast<uint32_t>(record.color_surface.colorFormat));
     if (!render_target || !record.vertex_program || !record.fragment_program || !count || !indices) {
         LOG_ERROR("GE:R Metal TRACE draw.skip reason=missing_target_program_or_indices");
         return;
@@ -555,16 +551,12 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
         LOG_ERROR("GE:R Metal TRACE draw.fail stage=pipeline");
         return;
     }
-    LOG_INFO("GE:R Metal TRACE draw.pipeline_ready");
 
     begin_render_pass();
     if (!render_encoder)
         return;
     auto enc = render_encoder;
 
-    LOG_INFO("GE:R Metal TRACE bindings textures vertex={} fragment={} vertex_uniform={} fragment_uniform={} vertex_streams={}",
-        vertex_texture_count, fragment_texture_count,
-        vertex_uniforms[0] != nil, fragment_uniforms[0] != nil, record.vertex_streams.size());
     const size_t vert_header = align(sizeof(vert_info), 8);
     const size_t frag_header = align(sizeof(frag_info), 8);
     const size_t vert_size = vert_header + vertex_texture_count * sizeof(float) * 4;
