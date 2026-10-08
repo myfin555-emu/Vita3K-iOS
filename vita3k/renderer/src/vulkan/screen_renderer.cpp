@@ -281,6 +281,11 @@ void ScreenRenderer::create_swapchain() {
     swapchain_size = surface_capabilities.minImageCount + 1;
     if (surface_capabilities.maxImageCount != 0)
         swapchain_size = std::min(swapchain_size, surface_capabilities.maxImageCount);
+#if defined(VITA3K_PLATFORM_IOS)
+    // Keep at most three drawable images on A11: extra Metal drawables increase
+    // in-flight memory and latency without helping a 30 FPS target.
+    swapchain_size = std::min(swapchain_size, 3u);
+#endif
 
     // Create Swapchain
     {
