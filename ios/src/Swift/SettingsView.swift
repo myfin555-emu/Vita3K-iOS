@@ -200,7 +200,6 @@ struct SettingsView: View {
                 .compatibleOnChange(of: model.highAccuracy) { _, _ in model.save() }
             Toggle("Surface sync", isOn: $model.surfaceSync)
             Toggle("Double buffer", isOn: $model.doubleBuffer)
-            Toggle("Async pipeline compilation", isOn: $model.asyncPipelineCompilation)
 
             Picker("Anisotropic filtering", selection: $model.anisotropicFiltering) {
                 ForEach(SettingsModel.anisotropicOptions, id: \.self) { value in
