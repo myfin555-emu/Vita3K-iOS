@@ -9,7 +9,11 @@
 
 #import <UIKit/UIKit.h>
 
+#include <array>
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 // The on-screen controller, its layout editor, the in-game menu, the controller
 // options and the performance readout are all SwiftUI now; this file is the
@@ -38,6 +42,71 @@ static UIViewController *g_presented_sheet = nil;
 static BOOL g_return_to_game_menu = NO;
 
 static UITapGestureRecognizer *g_three_finger_tap = nil;
+
+namespace {
+std::atomic_bool g_input_worker_running{false};
+std::thread g_input_worker;
+std::mutex g_input_mutex;
+std::condition_variable g_input_cv;
+std::array<std::atomic<short>, SDL_GAMEPAD_AXIS_COUNT> g_pending_axes{};
+std::atomic<uint64_t> g_pending_axis_mask{0};
+std::atomic<uint64_t> g_pending_button_press{0};
+std::atomic<uint64_t> g_pending_button_release{0};
+
+void input_worker_loop() {
+    while (g_input_worker_running.load(std::memory_order_acquire)) {
+        std::unique_lock lock(g_input_mutex);
+        g_input_cv.wait_for(lock, std::chrono::milliseconds(16));
+        lock.unlock();
+        if (!g_input_worker_running.load(std::memory_order_acquire))
+            break;
+        if (!g_virtual_joystick)
+            continue;
+
+        const uint64_t press = g_pending_button_press.exchange(0, std::memory_order_acq_rel);
+        const uint64_t release = g_pending_button_release.exchange(0, std::memory_order_acq_rel);
+        for (int button = 0; button < SDL_GAMEPAD_BUTTON_COUNT && button < 64; ++button) {
+            const uint64_t bit = 1ull << button;
+            if (press & bit) {
+                ctrl::virtual_pad.button(button, true);
+                SDL_SetJoystickVirtualButton(g_virtual_joystick, button, true);
+            }
+            if (release & bit) {
+                ctrl::virtual_pad.button(button, false);
+                SDL_SetJoystickVirtualButton(g_virtual_joystick, button, false);
+            }
+        }
+
+        const uint64_t axes = g_pending_axis_mask.exchange(0, std::memory_order_acq_rel);
+        for (int axis = 0; axis < SDL_GAMEPAD_AXIS_COUNT && axis < 64; ++axis) {
+            if ((axes & (1ull << axis)) == 0)
+                continue;
+            const short value = g_pending_axes[axis].load(std::memory_order_acquire);
+            ctrl::virtual_pad.axis(axis, value);
+            SDL_SetJoystickVirtualAxis(g_virtual_joystick, axis, value);
+        }
+    }
+}
+
+void start_input_worker() {
+    bool expected = false;
+    if (!g_input_worker_running.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+        return;
+    g_input_worker = std::thread(input_worker_loop);
+}
+
+void stop_input_worker() {
+    if (!g_input_worker_running.exchange(false, std::memory_order_acq_rel))
+        return;
+    g_input_cv.notify_all();
+    if (g_input_worker.joinable())
+        g_input_worker.join();
+    g_pending_axis_mask.store(0, std::memory_order_release);
+    g_pending_button_press.store(0, std::memory_order_release);
+    g_pending_button_release.store(0, std::memory_order_release);
+}
+}
+
 
 static void performOnMainThread(dispatch_block_t block);
 static void presentGameMenu();
@@ -183,6 +252,7 @@ bool vita3k_ios_attach_virtual_controller() {
         return false;
     }
     ctrl::virtual_pad.attach(g_virtual_joystick_id);
+    start_input_worker();
     // Trigger axes rest at minimum on a real pad; virtual axes default to 0
     // (half pressed), so park them explicitly.
     SDL_SetJoystickVirtualAxis(g_virtual_joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
@@ -326,23 +396,33 @@ void vita3k_ios_report_safe_area_top_pixels(const float pixels) {
 }
 
 void vita3k_ios_virtual_pad_set_button(const int button, const bool pressed) {
-    if (!g_virtual_joystick)
+    if (!g_virtual_joystick || button < 0 || button >= 64)
         return;
-    ctrl::virtual_pad.button(button, pressed);
-    SDL_SetJoystickVirtualButton(g_virtual_joystick, button, pressed);
+    const uint64_t bit = 1ull << button;
+    if (pressed)
+        g_pending_button_press.fetch_or(bit, std::memory_order_release);
+    else
+        g_pending_button_release.fetch_or(bit, std::memory_order_release);
+    g_input_cv.notify_one();
 }
 
 void vita3k_ios_virtual_pad_set_axis(const int axis, const short value) {
-    if (!g_virtual_joystick)
+    if (!g_virtual_joystick || axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT || axis >= 64)
         return;
-    ctrl::virtual_pad.axis(axis, value);
-    SDL_SetJoystickVirtualAxis(g_virtual_joystick, axis, value);
+    g_pending_axes[axis].store(value, std::memory_order_release);
+    g_pending_axis_mask.fetch_or(1ull << axis, std::memory_order_release);
+    g_input_cv.notify_one();
 }
 
 void vita3k_ios_virtual_pad_release_all() {
-    ctrl::virtual_pad.release_all();
     if (!g_virtual_joystick)
         return;
+    for (int button = 0; button < SDL_GAMEPAD_BUTTON_COUNT && button < 64; ++button)
+        g_pending_button_release.fetch_or(1ull << button, std::memory_order_release);
+    for (int axis = 0; axis < SDL_GAMEPAD_AXIS_COUNT && axis < 64; ++axis)
+        g_pending_axes[axis].store(0, std::memory_order_release);
+    g_pending_axis_mask.fetch_or(SDL_GAMEPAD_AXIS_COUNT >= 64 ? ~0ull : ((1ull << SDL_GAMEPAD_AXIS_COUNT) - 1), std::memory_order_release);
+    g_input_cv.notify_one();
     // Every Vita-relevant button and axis, so a control held when a session
     // pauses cannot stay stuck on.
     for (int button = 0; button <= SDL_GAMEPAD_BUTTON_DPAD_RIGHT; ++button)
@@ -367,6 +447,7 @@ void vita3k_ios_set_physical_controller_connected(bool connected) {
 }
 
 void vita3k_ios_detach_virtual_controller() {
+    stop_input_worker();
     ctrl::virtual_pad.attach(0);
     if (g_virtual_joystick)
         SDL_CloseJoystick(g_virtual_joystick);
