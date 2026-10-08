@@ -45,6 +45,7 @@ class DynarmicCPU : public CPUInterface {
     bool log_code = false;
     bool cpu_opt;
     bool time_sliced = false;
+    bool jit_status_logged = false;
 
     // Architectural state kept while `jit` is released (dormant thread or
     // not-yet-started thread). Accessors read/write this instead of the jit
