@@ -327,6 +327,12 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
                 fps, avg_frame_ms, draws_per_frame, metrics_frames,
                 vita3k_ios::ThermalThrottleManager::state_name(pressure.thermal),
                 pressure.rss_mb, pressure.available_mb, pressure.memory_pressure);
+            // Proactive GC on A11: do not wait for critical. Request trim
+            // while available is still ~150–280 MiB so staging buffers and
+            // texture upload scratch are reclaimed before jetsam pressure
+            // collapses the frame rate.
+            if (pressure.memory_pressure >= 50)
+                vita3k_ios::MemoryMonitor::request_gc();
             metrics_window_start = metrics_now;
             metrics_frames = 0;
             metrics_frame_ms = 0.0;
