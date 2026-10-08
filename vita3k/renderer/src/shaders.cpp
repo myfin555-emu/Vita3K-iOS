@@ -28,6 +28,7 @@
 #include <util/log.h>
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace renderer {
@@ -65,7 +66,10 @@ bool get_shaders_cache_hashs(State &renderer) {
         dynamic_cast<vulkan::VKState &>(renderer).pipeline_cache.read_pipeline_cache();
     }
 
-    // Read Hashs info value
+    // Read Hashs info value. Cache files can contain duplicates from repeated runtime shader use;
+    // discard them here so launch warmup does not revisit the same shader pair.
+    std::unordered_set<std::string> seen_hash_pairs;
+    seen_hash_pairs.reserve(std::min<size_t>(size, 4096));
     for (size_t a = 0; a < size; a++) {
         auto read = [&shaders_hashs]() {
             Sha256Hash hash;
@@ -79,7 +83,12 @@ bool get_shaders_cache_hashs(State &renderer) {
         hash.frag = read();
         hash.vert = read();
 
-        renderer.shaders_cache_hashs.push_back({ hash.frag, hash.vert });
+        std::string key;
+        key.resize(sizeof(Sha256Hash) * 2);
+        memcpy(key.data(), hash.frag.data(), sizeof(Sha256Hash));
+        memcpy(key.data() + sizeof(Sha256Hash), hash.vert.data(), sizeof(Sha256Hash));
+        if (seen_hash_pairs.insert(std::move(key)).second)
+            renderer.shaders_cache_hashs.push_back({ hash.frag, hash.vert });
     }
 
     shaders_hashs.close();
