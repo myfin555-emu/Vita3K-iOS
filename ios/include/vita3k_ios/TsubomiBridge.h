@@ -37,6 +37,7 @@ NS_SWIFT_NAME(EmulatorSettings)
 @property(nonatomic) BOOL cpuOptimizations;
 @property(nonatomic) BOOL ngsAudio;
 @property(nonatomic) BOOL asyncPipelineCompilation;
+@property(nonatomic) BOOL precompileShadersBeforeLaunch;
 @property(nonatomic) NSInteger anisotropicFiltering;
 @property(nonatomic) BOOL highAccuracy;
 @property(nonatomic) BOOL surfaceSync;
