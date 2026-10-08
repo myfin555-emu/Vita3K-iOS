@@ -262,6 +262,7 @@ NSString *trophy_grade_name(int grade) {
     core.cpu_opt = self.cpuOptimizations;
     core.ngs_enable = self.ngsAudio;
     core.async_pipeline_compilation = self.asyncPipelineCompilation;
+    core.precompile_shaders_before_launch = self.precompileShadersBeforeLaunch;
     core.anisotropic_filtering = static_cast<int>(self.anisotropicFiltering);
     core.high_accuracy = self.highAccuracy;
     core.surface_sync = self.surfaceSync;
