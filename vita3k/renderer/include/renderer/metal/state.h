@@ -98,7 +98,15 @@ struct MetalContext final : renderer::Context {
 
     MetalRenderTarget *render_target = nullptr;
     id<MTLCommandBuffer> command_buffer = nil;
+    id<MTLRenderCommandEncoder> render_encoder = nil;
     bool first_render_pass = true;
+
+    // Keep one Metal command buffer/encoder alive across the many GXM draws
+    // that make up a render pass. Creating and committing a command buffer for
+    // every draw turns a few hundred Vita draws per frame into hundreds of
+    // host submissions and is especially expensive on A11-class devices.
+    void begin_render_pass();
+    void end_render_pass(bool commit);
 
     explicit MetalContext(MetalState &state, MemState &mem);
     ~MetalContext() override;
