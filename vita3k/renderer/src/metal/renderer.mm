@@ -558,6 +558,50 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
         return;
     auto enc = render_encoder;
 
+    [enc setRenderPipelineState:pipeline];
+    [enc setDepthStencilState:depth_state_for_draw()];
+    [enc setCullMode:cull_mode(record.cull_mode)];
+    [enc setTriangleFillMode:fill_mode(record.front_polygon_mode)];
+    [enc setFrontFacingWinding:MTLWindingCounterClockwise];
+    [enc setViewport:(MTLViewport){
+        static_cast<double>(record.viewport_x), static_cast<double>(record.viewport_y),
+        static_cast<double>(record.viewport_width), static_cast<double>(record.viewport_height),
+        0.0, 1.0
+    }];
+
+    for (size_t i = 0; i < vertex_streams.size(); ++i) {
+        if (vertex_streams[i])
+            [enc setVertexBuffer:vertex_streams[i] offset:0 atIndex:4 + i];
+    }
+    for (size_t i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; ++i) {
+        if (vertex_textures[i]) {
+            [enc setVertexTexture:vertex_textures[i] atIndex:i];
+            [enc setVertexSamplerState:vertex_samplers[i] atIndex:i];
+        }
+        if (fragment_textures[i]) {
+            [enc setFragmentTexture:fragment_textures[i] atIndex:i];
+            [enc setFragmentSamplerState:fragment_samplers[i] atIndex:i];
+        }
+    }
+
+    shader::RenderVertUniformBlock vert_info{};
+    vert_info.viewport_flip = record.viewport_flip;
+    vert_info.viewport_flag = record.viewport_flat ? 1.0f : 0.0f;
+    vert_info.screen_width = static_cast<float>(render_target->width);
+    vert_info.screen_height = static_cast<float>(render_target->height);
+    vert_info.z_offset = record.z_offset;
+    vert_info.z_scale = record.z_scale;
+
+    shader::RenderFragUniformBlock frag_info{};
+    frag_info.back_disabled = record.back_side_fragment_program_mode == SCE_GXM_FRAGMENT_PROGRAM_DISABLED;
+    frag_info.front_disabled = record.front_side_fragment_program_mode == SCE_GXM_FRAGMENT_PROGRAM_DISABLED;
+    frag_info.writing_mask = record.writing_mask;
+    frag_info.use_raw_image = 0.0f;
+    frag_info.res_multiplier = state.res_multiplier;
+
+    const uint16_t vertex_texture_count = vp->texture_count;
+    const uint16_t fragment_texture_count = fp->texture_count;
+
     const size_t vert_header = align(sizeof(vert_info), 8);
     const size_t frag_header = align(sizeof(frag_info), 8);
     const size_t vert_size = vert_header + vertex_texture_count * sizeof(float) * 4;
