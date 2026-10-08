@@ -1201,13 +1201,13 @@ void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNo
     const size_t height = record.color_surface.height;
     const size_t stride = record.color_surface.strideInPixels;
     const size_t bytes = height * stride * 4;
-    std::vector<uint8_t> pixels(bytes);
-    [render_target->color getBytes:pixels.data() bytesPerRow:stride * 4
+    surface_readback.resize(bytes);
+    [render_target->color getBytes:surface_readback.data() bytesPerRow:stride * 4
         bytesPerImage:0 fromRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 slice:0];
     auto *dst = static_cast<uint8_t *>(record.color_surface.data.get(mem));
     if (dst) {
         for (size_t y = 0; y < height; ++y)
-            memcpy(dst + y * stride * 4, pixels.data() + y * width * 4, width * 4);
+            memcpy(dst + y * stride * 4, surface_readback.data() + y * width * 4, width * 4);
     }
 
     surface_dirty = false;
