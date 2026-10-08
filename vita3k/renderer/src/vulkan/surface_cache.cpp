@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <renderer/half_resolution_readback.h>
 #include <renderer/surface_copy_reuse.h>
 #include <renderer/vulkan/color_surface.h>
 #include <renderer/vulkan/surface_cache.h>
@@ -136,6 +137,7 @@ void VKSurfaceCache::destroy_surface(ColorSurfaceCacheInfo &info) {
     info.sws_context = nullptr;
     info.need_post_surface_sync = false;
     info.need_buffer_sync = false;
+    info.half_resolution_readback = false;
 
     // don't forget to destroy in the right order
     for (auto &casted : info.casted_textures) {
@@ -1357,7 +1359,29 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
             surface_write_stages, vk::PipelineStageFlagBits::eTransfer, {}, surface_transfer_barrier(), {}, {});
     }
 
-    if (state.res_multiplier != 1.0f) {
+    // At 0.5x, reading the small image and duplicating its texels on the CPU
+    // avoids a full-size GPU blit image and transfers only a quarter as much
+    // data. Keep GPU conversion for sRGB/float/packed formats: their blit can
+    // change encoded bits, so byte replication is not an equivalent operation.
+    bool half_resolution_readback = false;
+#ifdef VITA3K_PLATFORM_IOS
+    const auto format = last_written_surface->texture.format;
+    const bool byte_preserving_format = format == vk::Format::eR8Unorm
+        || format == vk::Format::eR8G8Unorm || format == vk::Format::eR8G8B8A8Unorm;
+    half_resolution_readback = !state.features.enable_memory_mapping && byte_preserving_format
+        && !format_need_additional_memory(last_written_surface->format)
+        && can_expand_half_resolution(last_written_surface->width, last_written_surface->height,
+            last_written_surface->original_width, last_written_surface->original_height,
+            gxm::bits_per_pixel(last_written_surface->format) / 8);
+#endif
+    // A resize/reconfiguration must not reuse a differently-sized readback.
+    if (last_written_surface->half_resolution_readback != half_resolution_readback && last_written_surface->copy_buffer) {
+        state.frame().destroy_queue.add_buffer(*last_written_surface->copy_buffer);
+        last_written_surface->copy_buffer.reset();
+    }
+    last_written_surface->half_resolution_readback = half_resolution_readback;
+
+    if (state.res_multiplier != 1.0f && !half_resolution_readback) {
         // scale back the image using a blit command first
 
         if (!last_written_surface->blit_image)
@@ -1409,7 +1433,9 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
             const size_t host_stride = format_need_additional_memory(last_written_surface->format)
                 ? (last_written_surface->stride_bytes / 3) * 4
                 : last_written_surface->stride_bytes;
-            copy_buffer.size = host_stride * last_written_surface->original_height;
+            copy_buffer.size = half_resolution_readback
+                ? size_t{ last_written_surface->width } * last_written_surface->height * gxm::bits_per_pixel(last_written_surface->format) / 8
+                : host_stride * last_written_surface->original_height;
             copy_buffer.init_buffer(vk::BufferUsageFlagBits::eTransferDst, vkutil::vma_mapped_alloc);
         }
 
@@ -1423,16 +1449,24 @@ ColorSurfaceCacheInfo *VKSurfaceCache::perform_surface_sync() {
         last_written_surface->need_post_surface_sync = !is_swizzle_identity;
         std::tie(buffer, offset) = state.get_matching_mapping(last_written_surface->data);
     }
-    const uint32_t pixel_stride = (last_written_surface->stride_bytes * 8) / gxm::bits_per_pixel(last_written_surface->format);
+    const uint32_t pixel_stride = half_resolution_readback ? last_written_surface->width
+                                                           : (last_written_surface->stride_bytes * 8) / gxm::bits_per_pixel(last_written_surface->format);
+    const uint32_t copy_width = half_resolution_readback ? last_written_surface->width : last_written_surface->original_width;
+    const uint32_t copy_height = half_resolution_readback ? last_written_surface->height : last_written_surface->original_height;
     vk::BufferImageCopy copy{
         .bufferOffset = offset,
         .bufferRowLength = pixel_stride,
-        .bufferImageHeight = last_written_surface->original_height,
+        .bufferImageHeight = copy_height,
         .imageSubresource = vkutil::color_subresource_layer,
         .imageOffset = { 0, 0, 0 },
-        .imageExtent = { last_written_surface->original_width, last_written_surface->original_height, 1 }
+        .imageExtent = { copy_width, copy_height, 1 }
     };
     cmd_buffer.copyImageToBuffer(image_to_copy, image_layout, buffer, copy);
+#ifdef VITA3K_PLATFORM_IOS
+    ++context->diagnostic_readbacks;
+    context->diagnostic_half_readbacks += half_resolution_readback;
+    context->diagnostic_readback_bytes += uint64_t{ pixel_stride } * copy_height * vk::blockSize(last_written_surface->texture.format);
+#endif
 
     ColorSurfaceCacheInfo *return_value = last_written_surface;
     last_written_surface = nullptr;
@@ -1547,8 +1581,14 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
         // padding instead of feeding it back into CPU data and texture hashes.
         const size_t row_bytes = static_cast<size_t>(surface->original_width) * gxm::bits_per_pixel(surface->format) / 8;
         const auto *source = static_cast<const uint8_t *>(surface->copy_buffer->mapped_data);
-        for (uint32_t row = 0; row < surface->original_height; ++row)
-            memcpy(pixels + row * surface->stride_bytes, source + row * surface->stride_bytes, row_bytes);
+        if (surface->half_resolution_readback) {
+            expand_half_resolution(pixels, surface->stride_bytes, source,
+                surface->original_width / 2, surface->original_height / 2,
+                gxm::bits_per_pixel(surface->format) / 8);
+        } else {
+            for (uint32_t row = 0; row < surface->original_height; ++row)
+                memcpy(pixels + row * surface->stride_bytes, source + row * surface->stride_bytes, row_bytes);
+        }
 
 #ifdef VITA3K_PLATFORM_IOS
 #ifndef NDEBUG
@@ -1567,7 +1607,7 @@ void VKSurfaceCache::perform_post_surface_sync(const MemState &mem, ColorSurface
             auto &last_ms = last_logged_ms[surface->data.address()];
             if (last_ms == 0 || now_ms - last_ms >= 3000) {
                 last_ms = now_ms;
-                const auto *bytes = static_cast<const uint8_t *>(surface->copy_buffer->mapped_data);
+                const auto *bytes = pixels;
                 uint64_t sum = 0;
                 uint8_t lo = 255;
                 uint8_t hi = 0;

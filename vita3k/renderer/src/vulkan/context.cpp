@@ -626,6 +626,12 @@ void new_frame(VKContext &context) {
             context.diagnostic_surface_copies, context.diagnostic_surface_copy_reuses);
         context.diagnostic_surface_copies = 0;
         context.diagnostic_surface_copy_reuses = 0;
+        LOG_INFO("iOS surface readback: copies={} half_resolution={} transferred_mb={:.1f} (300 frames)",
+            context.diagnostic_readbacks, context.diagnostic_half_readbacks,
+            context.diagnostic_readback_bytes / (1024.0 * 1024.0));
+        context.diagnostic_readbacks = 0;
+        context.diagnostic_half_readbacks = 0;
+        context.diagnostic_readback_bytes = 0;
         auto &texture_stats = context.state.texture_cache;
         LOG_INFO("iOS texture work: hash_ms={:.1f} hash_input_mb={:.1f} uploads={} (300 frames)",
             texture_stats.diagnostic_hash_ms, texture_stats.diagnostic_hash_bytes / (1024.0 * 1024.0), texture_stats.diagnostic_texture_uploads);
@@ -653,6 +659,7 @@ void new_frame(VKContext &context) {
     // deferred destruction of the objects
     frame.destroy_queue.destroy_objects();
 #ifdef VITA3K_PLATFORM_IOS
+    context.state.texture_cache.trim_textures(context, context.state.texture_cache.trim_requested);
     context.state.texture_cache.trim_staging_buffers(context.frame_timestamp);
 #endif
 

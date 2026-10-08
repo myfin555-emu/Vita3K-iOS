@@ -32,6 +32,7 @@
 #include <vkutil/vkutil.h>
 
 #include <algorithm>
+#include <bit>
 
 namespace renderer::vulkan {
 
@@ -210,6 +211,64 @@ void VKTextureCache::trim_staging_buffers(uint64_t frame_timestamp) {
     trim_requested = false;
 }
 
+void VKTextureCache::trim_textures(const VKContext &context, bool memory_pressure) {
+    // Never evict an upload being assembled, even if a guest frame marker
+    // arrives in an unusual position within its command stream.
+    if (is_texture_transfer_ready)
+        return;
+    constexpr uint64_t mib = 1024 * 1024;
+    const uint64_t budget = (memory_pressure ? 128 : 192) * mib;
+    uint64_t resident = 0;
+    for (const auto &entry : textures)
+        if (entry.texture.image)
+            resident += entry.memory_needed;
+    if (resident <= budget)
+        return;
+
+    std::vector<size_t> candidates;
+    const uint64_t minimum_age = memory_pressure ? 60 : 120;
+    for (size_t i = 0; i < textures.size(); ++i) {
+        const auto &entry = textures[i];
+        if (!entry.texture.image || &entry == current_texture
+            || entry.last_used_frame > context.frame_timestamp
+            || context.frame_timestamp - entry.last_used_frame < minimum_age)
+            continue;
+        const auto bound = [&](const auto &bindings) {
+            return std::any_of(std::begin(bindings), std::end(bindings), [&](const auto &binding) {
+                return binding.imageView == entry.texture.view;
+            });
+        };
+        // Bindings can survive across frames even when select() is not called.
+        if (!bound(context.vertex_textures) && !bound(context.fragment_textures))
+            candidates.push_back(i);
+    }
+    std::sort(candidates.begin(), candidates.end(), [&](size_t a, size_t b) {
+        return textures[a].last_used_frame < textures[b].last_used_frame;
+    });
+    uint64_t released = 0;
+    size_t evicted = 0;
+    for (const auto index : candidates) {
+        if (resident <= budget || evicted == 8)
+            break;
+        auto &entry = textures[index];
+        auto &info = texture_queue.items[index].content;
+        texture_lookup.erase(std::bit_cast<TextureGxmDataRepr>(info.texture));
+        info.texture_size = 0; // Next bind must configure AND upload again.
+        texture_queue.set_as_lru(&info);
+        resident -= entry.memory_needed;
+        released += entry.memory_needed;
+        entry.memory_needed = 0;
+        entry.last_used_frame = ~uint64_t{ 0 };
+        // Preserve submitted descriptors and any recorded work until this
+        // frame slot is retired. Never call the teardown cleanup() here.
+        state.frame().destroy_queue.add_image(entry.texture);
+        ++evicted;
+    }
+    if (evicted)
+        LOG_INFO("iOS texture budget: retired={} estimated_mb={:.1f} retained_mb={:.1f}",
+            evicted, released / double(mib), resident / double(mib));
+}
+
 void VKTextureCache::prepare_staging_buffer(bool is_configure) {
     assert(!is_texture_transfer_ready);
     VKContext *context = reinterpret_cast<VKContext *>(state.context);
@@ -347,6 +406,7 @@ bool VKTextureCache::init(const bool hashless_texture_cache, const fs::path &tex
 
 void VKTextureCache::select(size_t index, const SceGxmTexture &texture) {
     current_texture = &textures[index];
+    current_texture->last_used_frame = reinterpret_cast<VKContext *>(state.context)->frame_timestamp;
     is_texture_transfer_ready = false;
 }
 

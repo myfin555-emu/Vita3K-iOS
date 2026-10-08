@@ -31,6 +31,7 @@ namespace renderer::vulkan {
 
 struct VKState;
 struct VKRenderTarget;
+struct VKContext;
 
 constexpr int NB_TEXTURE_STAGING_BUFFERS = 16;
 
@@ -47,6 +48,7 @@ struct TextureCacheEntry {
     bool is_cube;
     uint16_t mip_count;
     uint32_t memory_needed;
+    uint64_t last_used_frame = ~uint64_t{ 0 };
 };
 
 struct VKTextureCache : public TextureCache {
@@ -86,6 +88,7 @@ struct VKTextureCache : public TextureCache {
 
     void cleanup();
     void trim_staging_buffers(uint64_t frame_timestamp);
+    void trim_textures(const VKContext &context, bool memory_pressure);
 };
 
 struct FrameObject {
@@ -237,6 +240,9 @@ struct VKContext : public renderer::Context {
     uint64_t diagnostic_fetch_switches = 0;
     uint64_t diagnostic_surface_copies = 0;
     uint64_t diagnostic_surface_copy_reuses = 0;
+    uint64_t diagnostic_readback_bytes = 0;
+    uint64_t diagnostic_readbacks = 0;
+    uint64_t diagnostic_half_readbacks = 0;
     uint64_t diagnostic_frames = 0;
     double diagnostic_frame_wait_ms = 0;
 #endif

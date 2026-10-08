@@ -113,6 +113,8 @@ struct ColorSurfaceCacheInfo : public SurfaceCacheInfo {
 
     // only used for 3-component rgb textures which can't be copied directly
     std::unique_ptr<vkutil::Buffer> copy_buffer;
+    // iOS 0.5x packed readback; expanded on the wait thread before notification.
+    bool half_resolution_readback = false;
 
     // pointer shared with the memory trap indicating if this surface sync is needed
     std::shared_ptr<bool> need_surface_sync;

@@ -72,6 +72,7 @@ void dependency_coverage() {
 }
 
 #include "SrgbSurfaceTests.h"
+#include "HalfReadbackTests.h"
 
 int main(int argc, char **argv) {
     VULKAN_HPP_DEFAULT_DISPATCHER.init();
@@ -110,6 +111,7 @@ int main(int argc, char **argv) {
     const auto device = gpu.createDevice(device_info);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
     srgb_storage_roundtrip(device, gpu, family, argc > 1 && std::strcmp(argv[1], "--legacy-srgb-storage") == 0);
+    half_readback_roundtrip(device, gpu, family);
     // Validate every production render-pass mode and its stage/access masks.
     for (bool interlock : {false, true}) {
         for (bool no_color : {false, true}) {

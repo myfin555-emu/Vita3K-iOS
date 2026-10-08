@@ -22,6 +22,9 @@ start = surface.index('            const size_t host_stride =')
 allocation = surface[start:surface.index('            copy_buffer.init_buffer', start)]
 source = r'''
 #include <renderer/vulkan/texture_descriptor_cache.h>
+#include <renderer/half_resolution_readback.h>
+using renderer::expand_half_resolution;
+using renderer::can_expand_half_resolution;
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_format_traits.hpp>
 #include <algorithm>
@@ -45,6 +48,8 @@ struct Pointer {
 struct Buffer { void *mapped_data; size_t size; };
 struct ColorSurfaceCacheInfo {
     uint32_t stride_bytes, original_width, original_height;
+    uint32_t width = 0, height = 0;
+    bool half_resolution_readback = false;
     SceGxmColorBaseFormat format;
     struct { vk::Format format; } texture;
     vk::ComponentMapping swizzle;
@@ -68,6 +73,12 @@ start = surface.index('template <typename T>\nstatic void swizzle_text_T_2')
 end = surface.index('void VKSurfaceCache::queue_post_surface_sync', start)
 source += surface[start:end]
 source += function('void VKSurfaceCache::perform_post_surface_sync(')
+start = surface.index('    bool half_resolution_readback = false;')
+end = surface.index('    // A resize/reconfiguration', start)
+policy = surface[start:end].replace('#ifdef VITA3K_PLATFORM_IOS', '#if 1')
+source += '\nbool half_policy(ColorSurfaceCacheInfo *last_written_surface, bool mapped) {\n'
+source += 'struct { struct { bool enable_memory_mapping; } features; } state{{mapped}};\n'
+source += policy + '\nreturn half_resolution_readback;\n}\n'
 scene = (repo / 'vita3k/renderer/src/vulkan/scene.cpp').read_text()
 start = scene.index('static vk::DescriptorSet retrieve_texture_descriptor(')
 end = scene.index('static void draw_bind_descriptors(', start)
@@ -170,12 +181,43 @@ int main() {
         }
         for (size_t i = 8; i < 12; ++i) assert(guest[row * 12 + i] == 0xA5);
     }
+    // Half-resolution readback must preserve texels, swizzles and row padding.
+    info.width = info.height = 1;
+    assert(half_policy(&info, false));
+    assert(!half_policy(&info, true));
+    info.texture.format = vk::Format::eR8G8B8A8Srgb;
+    assert(!half_policy(&info, false));
+    info.texture.format = vk::Format::eR32G32Sfloat;
+    assert(!half_policy(&info, false));
+    info.texture.format = vk::Format::eR8G8B8A8Unorm;
+    info.width = 2;
+    assert(!half_policy(&info, false));
+    info.width = 1;
+    info.half_resolution_readback = true;
+    cache.perform_post_surface_sync({}, &info);
+    for (size_t row = 0; row < 2; ++row) {
+        for (size_t pixel = 0; pixel < 2; ++pixel) {
+            const size_t offset = row * 12 + pixel * 4;
+            assert(guest[offset] == gpu[2] && guest[offset + 2] == gpu[0]);
+            assert(guest[offset + 1] == gpu[1] && guest[offset + 3] == gpu[3]);
+        }
+        for (size_t i = 8; i < 12; ++i) assert(guest[row * 12 + i] == 0xA5);
+    }
     info.format = SCE_GXM_COLOR_BASE_FORMAT_U8U8U8;
+    assert(!half_policy(&info, false));
     info.stride_bytes = 9;
     auto *last_written_surface = &info;
     Buffer copy_buffer{};
+    bool half_resolution_readback = false;
+    {
 ''' + allocation + r'''
     assert(copy_buffer.size == 24); // 3 host RGBA pixels per row, 2 rows.
+    }
+    info.format = RGBA;
+    info.stride_bytes = 12;
+    half_resolution_readback = true;
+''' + allocation + r'''
+    assert(copy_buffer.size == 4); // one 1x1 RGBA texel instead of 2x2+padding.
     std::cout << "Production gamma/swizzle cache isolation and padded readback passed\n";
 }
 '''
