@@ -405,7 +405,7 @@ index ccf807e2..19e57822 100644
  
  namespace {
  
-@@ -72,15 +76,30 @@ void SpinLockImpl::Initialize() {
+@@ -72,15 +76,31 @@ void SpinLockImpl::Initialize() {
  }
  
  }  // namespace
