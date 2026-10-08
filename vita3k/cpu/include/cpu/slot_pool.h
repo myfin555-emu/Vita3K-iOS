@@ -45,7 +45,7 @@ public:
             throw std::invalid_argument("JIT slot count must be positive");
     }
 
-    std::optional<std::size_t> acquire(const std::atomic_bool &cancelled) {
+    std::optional<std::size_t> acquire(const std::atomic_bool &cancelled, std::optional<std::size_t> preferred = std::nullopt) {
         std::unique_lock lock(mutex);
         const auto ticket = next_ticket++;
         waiting.push_back(ticket);
@@ -57,10 +57,20 @@ public:
             changed.notify_all();
             return std::nullopt;
         }
-        const auto index = std::find(busy.begin(), busy.end(), false) - busy.begin();
+
+        // Keep a guest thread on the same worker whenever possible. Dynarmic's
+        // translated blocks live in the worker's code cache, so stable affinity
+        // avoids recompiling the same Vita hot path on another worker after a
+        // scheduler wake-up. If the preferred slot is busy, fall back to any
+        // free slot so parallel guest threads still make progress.
+        std::size_t index = busy.size();
+        if (preferred && *preferred < busy.size() && !busy[*preferred])
+            index = *preferred;
+        else
+            index = std::find(busy.begin(), busy.end(), false) - busy.begin();
         busy[index] = true;
         changed.notify_all();
-        return static_cast<std::size_t>(index);
+        return index;
     }
 
     void release(std::size_t index) {
