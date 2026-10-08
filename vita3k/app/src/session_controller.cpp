@@ -30,7 +30,9 @@
 #include <renderer/functions.h>
 #include <util/log.h>
 
+#include <chrono>
 #include <exception>
+#include <thread>
 
 namespace app {
 
