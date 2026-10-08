@@ -623,6 +623,7 @@ void MetalContext::draw(SceGxmPrimitiveType type, SceGxmIndexFormat index_type,
     }
 
     first_render_pass = false;
+    surface_dirty = true;
 
 }
 
@@ -1176,6 +1177,20 @@ void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNo
     if (submitted)
         [submitted waitUntilCompleted];
 
+    // If the guest requests the same surface synchronization repeatedly without
+    // another draw, the contents are unchanged. Avoid another full texture
+    // readback while still delivering the requested notification values.
+    if (!surface_dirty) {
+        std::unique_lock<std::mutex> lock(state.notification_mutex);
+        if (vertex.address)
+            *vertex.address.get(mem) = vertex.value;
+        if (fragment.address)
+            *fragment.address.get(mem) = fragment.value;
+        lock.unlock();
+        state.notification_ready.notify_all();
+        return;
+    }
+
     // This render target is the exact surface that GXM asked us to synchronize.
     // Preserve the native Metal texture for presentation so the final image does
     // not have to be copied Metal -> guest RAM -> Metal again.
@@ -1194,6 +1209,7 @@ void MetalContext::sync_surface(const SceGxmNotification &vertex, const SceGxmNo
             memcpy(dst + y * stride * 4, pixels.data() + y * width * 4, width * 4);
     }
 
+    surface_dirty = false;
     {
         std::unique_lock<std::mutex> lock(state.notification_mutex);
         if (vertex.address)
