@@ -38,9 +38,10 @@ int MemoryMonitor::get_memory_pressure() {
     if (available == 0)
         return 0;
 
-    // Rough budget: if less than 200 MiB free, pressure climbs quickly.
-    constexpr uint64_t soft_limit = 400ull * 1024 * 1024;
-    constexpr uint64_t hard_limit = 120ull * 1024 * 1024;
+    // A11 / 2–3 GB devices jetsam earlier. Trigger GC and quality scaling
+    // while there is still headroom instead of waiting until available < 120 MiB.
+    constexpr uint64_t soft_limit = 280ull * 1024 * 1024;
+    constexpr uint64_t hard_limit = 80ull * 1024 * 1024;
 
     if (available >= soft_limit)
         return 0;
@@ -65,7 +66,7 @@ uint64_t MemoryMonitor::get_available_bytes() {
 }
 
 bool MemoryMonitor::is_memory_critical() {
-    return get_memory_pressure() >= 85;
+    return get_memory_pressure() >= 70;
 }
 
 void MemoryMonitor::request_gc() {
@@ -103,16 +104,18 @@ ThermalThrottleManager::ScalingAdvice ThermalThrottleManager::advice_for(
     case ThermalState::NOMINAL:
         break;
     case ThermalState::FAIR:
-        // Mild: keep image quality, prefer async shaders, slightly lower aniso.
+        // Mild heat on A11-class: prefer async, lower aniso, and drop surface
+        // sync cost early so staging readbacks do not compound with thermal.
         advice.async_pipeline_compilation = true;
-        if (advice.anisotropic_filtering > 2)
-            advice.anisotropic_filtering = 2;
+        if (advice.anisotropic_filtering > 1)
+            advice.anisotropic_filtering = 1;
+        advice.surface_sync = false;
+        if (advice.resolution_multiplier > 0.75f)
+            advice.resolution_multiplier = 0.75f;
         break;
     case ThermalState::SERIOUS:
-        // Noticeable heat: drop resolution a notch and disable high-accuracy paths.
-        advice.resolution_multiplier = std::min(advice.resolution_multiplier, 1.0f) * 0.75f;
-        if (advice.resolution_multiplier < 0.5f)
-            advice.resolution_multiplier = 0.5f;
+        // Noticeable heat: half-res, disable high-accuracy and surface sync.
+        advice.resolution_multiplier = 0.5f;
         advice.high_accuracy = false;
         advice.surface_sync = false;
         advice.anisotropic_filtering = 1;
@@ -141,19 +144,32 @@ const char *ThermalThrottleManager::state_name(ThermalState state) {
 }
 
 StabilityDefaults recommended_stability_defaults() {
-    return {};
+    StabilityDefaults d;
+    d.async_pipeline_compilation = true;
+    d.cpu_opt = true;
+    d.shader_cache = true;
+    d.texture_cache = true;
+    // A11-class first-run defaults: half-res keeps headroom for surface
+    // readbacks and texture hashing under jetsam pressure.
+    d.high_accuracy = true;
+    d.anisotropic_filtering = 1;
+    d.resolution_multiplier = 0.5f;
+    d.v_sync = false;
+    d.fps_limit = 30;
+    return d;
 }
 
 uint64_t recommended_guest_memory_bytes() {
     @autoreleasepool {
         const uint64_t physical = static_cast<uint64_t>(NSProcessInfo.processInfo.physicalMemory);
-        // Keep the guest well below Jetsam: 2 GB devices get 512 MiB,
-        // 3 GB devices 640 MiB, and 4 GB+ devices 768 MiB.
+        // Keep the guest well below Jetsam. A11 (iPhone 8/X, ~2–3 GB) is the
+        // primary target: 448 MiB leaves more room for host surface staging
+        // and Vulkan pipeline caches than the previous 512 MiB budget.
         if (physical >= 4ull * 1024 * 1024 * 1024)
             return 768ull * 1024 * 1024;
         if (physical >= 3ull * 1024 * 1024 * 1024)
-            return 640ull * 1024 * 1024;
-        return 512ull * 1024 * 1024;
+            return 576ull * 1024 * 1024;
+        return 448ull * 1024 * 1024;
     }
 }
 
