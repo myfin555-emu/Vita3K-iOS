@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - ios-upstream-core
+      - ios/a11-god-eater-a11-performance
     paths:
       - "CMakeLists.txt"
       - "vcpkg.json"
