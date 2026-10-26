@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
-# Build with the iOS 26 SDK, with runtime fallbacks back to iOS 16.
-set(VITA3K_IOS_DEPLOYMENT_TARGET "16.0" CACHE STRING "Minimum supported iOS version")
+# Build with the iOS 26 SDK, with runtime fallbacks back to iOS 16.4.
+set(VITA3K_IOS_DEPLOYMENT_TARGET "16.4" CACHE STRING "Minimum supported iOS version")
 set(VITA3K_IOS_BUNDLE_ID "org.vita3k.experimental.ios" CACHE STRING "Application bundle identifier")
 option(VITA3K_IOS_LINK_CORE "Link the first upstream Vita3K core slice" ON)
 
@@ -32,29 +32,16 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
         ${VITA3K_IOS_CUELUME_LICENSE}
         ${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets
     )
-    # Compile the app-icon asset catalog (Xcode generator runs actool) so the
-    # Tsubomi flower is the home-screen icon.
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets
         PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     set_source_files_properties(${VITA3K_IOS_CUELUME_LICENSE}
         PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/Licenses")
     target_include_directories(Vita3KiOS PRIVATE include)
     target_compile_features(Vita3KiOS PRIVATE cxx_std_23)
-    # -Wall/-Wextra are C-family flags; passing them to swiftc is an error, so
-    # scope them to the languages that understand them.
     target_compile_options(Vita3KiOS PRIVATE
         $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wall>
         $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wextra>)
     target_compile_definitions(Vita3KiOS PRIVATE VITA3K_IOS_UPSTREAM_CORE=1)
-    # Swift <-> Objective-C bridging.
-    #   * The bridging header is what Swift sees: it exposes ONLY
-    #     TsubomiBridge.h, a pure Objective-C facade. Swift deliberately does
-    #     not get C++ interop here - the core's headers are heavy C++23 and
-    #     importing them into every Swift file is both slow and fragile.
-    #   * PRODUCT_MODULE_NAME is pinned so the generated header the
-    #     Objective-C++ side imports has a stable name ("Tsubomi-Swift.h").
-    #     Left to default it would be derived from OUTPUT_NAME ("Vita3K-iOS")
-    #     with the hyphen mangled to an underscore.
     set_target_properties(Vita3KiOS PROPERTIES
         XCODE_ATTRIBUTE_SWIFT_VERSION "5.0"
         XCODE_ATTRIBUTE_PRODUCT_MODULE_NAME "Tsubomi"
@@ -62,13 +49,10 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/Swift/Tsubomi-Bridging-Header.h"
         XCODE_ATTRIBUTE_SWIFT_OPTIMIZATION_LEVEL[variant=Release] "-O"
         XCODE_ATTRIBUTE_SWIFT_OPTIMIZATION_LEVEL[variant=Debug] "-Onone"
-        # Whole-module in Release lets the optimizer specialize across files,
-        # which matters for SwiftUI view bodies.
         XCODE_ATTRIBUTE_SWIFT_COMPILATION_MODE[variant=Release] "wholemodule")
     target_link_libraries(Vita3KiOS PRIVATE
         vita3k
         audio
-        # IOSKeyboard.mm reads the common dialog and IME state directly.
         dialog
         ime
         io
@@ -86,8 +70,6 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
         "-framework UIKit"
         "-framework UniformTypeIdentifiers"
     )
-    # The renderer loads its screen-filter SPIR-V from
-    # <static assets>/shaders-builtin at runtime; ship it inside the bundle.
     add_custom_command(TARGET Vita3KiOS POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/vita3k/shaders-builtin"
